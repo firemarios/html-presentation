@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Slide Editor</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Monaco Editor Loader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a1a;
+            --bg-darker: #0f0f0f;
+            --bg-panel: #252525;
+            --border: #444;
+            --accent: #2b579a;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --slide-bg: #0d1117;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Toolbar */
+        .toolbar {
+            height: 50px;
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 12px;
+            flex-shrink: 0;
+            overflow-x: auto;
+        }
+
+        .toolbar-brand {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            height: 30px;
+            background: var(--border);
+            flex-shrink: 0;
+        }
+
+        .toolbar-btn {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .toolbar-btn:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .trans-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 3px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .trans-btn:hover,
+        .trans-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 220px 1fr 1fr;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Thumbnails */
+        .thumbnails-panel {
+            background: var(--bg-darker);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-darker);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent);
+        }
+
+        .thumb {
+            aspect-ratio: 16/9;
+            background: var(--slide-bg);
+            border: 2px solid transparent;
+            border-radius: 4px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .thumb:hover {
+            border-color: var(--border);
+        }
+
+        .thumb.active {
+            border-color: var(--accent);
+        }
+
+        .thumb-num {
+            position: absolute;
+            top: 3px;
+            left: 4px;
+            font-size: 9px;
+            color: var(--text-dim);
+            background: rgba(0, 0, 0, 0.6);
+            padding: 1px 5px;
+            border-radius: 2px;
+            z-index: 10;
+        }
+
+        .thumb-content {
+            width: 100%;
+            height: 100%;
+            transform: scale(0.15);
+            transform-origin: top left;
+            pointer-events: none;
+        }
+
+        .add-btn {
+            padding: 8px;
+            background: transparent;
+            border: 2px dashed var(--border);
+            color: var(--text-dim);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+
+        .add-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .no-slides {
+            text-align: center;
+            color: var(--text-dim);
+            padding: 30px 10px;
+            font-size: 12px;
+        }
+
+        .no-slides i {
+            font-size: 32px;
+            margin-bottom: 10px;
+            opacity: 0.3;
+            display: block;
+        }
+
+        /* Editor */
+        .editor-panel {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            height: 36px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .monaco-editor-container {
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        /* Preview */
+        .preview-panel {
+            display: flex;
+            flex-direction: column;
+            background: #111;
+            overflow: hidden;
+        }
+
+        .preview-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        .slide-wrapper {
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            max-height: none;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide-content {
+            width: 1280px;
+            height: 720px;
+            position: relative;
+            transform-origin: center center;
+            flex-shrink: 0;
+        }
+
+        /* Presentation Mode */
+        .presentation-mode {
+            position: relative;
+            transform-origin: center center;
+            flex-shrink: 0;
+        }
+
+        /* Presentation Mode */
+        .presentation-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .presentation-mode.active {
+            display: flex;
+        }
+
+        .pres-wrapper {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pres-wrapper .slide-content {
+            transform-origin: center center;
+        }
+
+        .pres-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 1001;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .presentation-mode:hover .pres-controls {
+            opacity: 1;
+        }
+
+        .pres-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            transition: all 0.2s;
+        }
+
+        .pres-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .pres-counter {
+            position: fixed;
+            bottom: 28px;
+            right: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 13px;
+            z-index: 1001;
+        }
+
+        /* Animations */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideInLeft {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes zoomIn {
+            from {
+                transform: scale(0.7);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(60px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .anim-slide-right {
+            animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .anim-slide-left {
+            animation: slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .anim-fade {
+            animation: fadeIn 0.4s ease;
+        }
+
+        .anim-zoom {
+            animation: zoomIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .anim-slide-up {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Text Reveal Transition */
+        @keyframes textReveal {
+            from {
+                opacity: 0;
+                transform: translateY(35px);
+                filter: blur(3px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+                filter: blur(0);
+            }
+        }
+
+
+
+        /* Notification */
+        .notification {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: var(--accent);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            transform: translateX(120%);
+            transition: transform 0.3s;
+            z-index: 2000;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-brand"><i class="fas fa-desktop"></i> HTML Slide Editor</div>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" onclick="editor.addSlide()"><i class="fas fa-plus"></i> New</button>
+        <button class="toolbar-btn" onclick="editor.duplicateSlide()"><i class="fas fa-copy"></i></button>
+        <button class="toolbar-btn" onclick="editor.deleteSlide()"><i class="fas fa-trash"></i></button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" onclick="editor.togglePresentation()"><i class="fas fa-play"></i> Present</button>
+        <button class="toolbar-btn" onclick="editor.exportHTML()"><i class="fas fa-file-export"></i> Export
+            HTML</button>
+        <button class="toolbar-btn" onclick="editor.exportProject()"><i class="fas fa-download"></i> Save
+            Project</button>
+        <button class="toolbar-btn" onclick="document.getElementById('importFile').click()"><i
+                class="fas fa-upload"></i> Load Project</button>
+        <input type="file" id="importFile" accept=".json" style="display:none" onchange="editor.importProject(this)">
+        <div class="toolbar-divider"></div>
+        <span style="font-size:11px;color:var(--text-dim);white-space:nowrap;">Transition:</span>
+        <button class="trans-btn active" onclick="editor.setTransition('slide-right')"
+            data-t="slide-right">Slide</button>
+        <button class="trans-btn" onclick="editor.setTransition('fade')" data-t="fade">Fade</button>
+        <button class="trans-btn" onclick="editor.setTransition('zoom')" data-t="zoom">Zoom</button>
+        <button class="trans-btn" onclick="editor.setTransition('slide-up')" data-t="slide-up">Up</button>
+        <button class="trans-btn" onclick="editor.setTransition('text')" data-t="text">Text</button>
+    </div>
+
+
+    <!-- Main -->
+    <div class="main-container" id="mainContainer">
+
+        <!-- Left: Thumbnails -->
+        <div class="thumbnails-panel" id="thumbnailsPanel">
+            <div class="no-slides">
+                <i class="fas fa-file-code"></i>
+                <div>No slides yet</div>
+            </div>
+        </div>
+
+        <!-- Center: HTML Editor -->
+        <div class="editor-panel">
+            <div class="panel-header">
+                <span><i class="fas fa-code"></i> HTML Source</span>
+                <div style="display:flex;gap:6px;">
+                    <button class="toolbar-btn" onclick="editor.formatCode()" style="padding:2px 10px;font-size:11px;" title="Format Document (Alt+Shift+F)"><i class="fas fa-align-left"></i> Format</button>
+                    <button class="toolbar-btn" onclick="editor.applyChanges()" style="padding:2px 10px;font-size:11px;"><i class="fas fa-sync"></i> Apply</button>
+                </div>
+            </div>
+            <div id="htmlEditor" class="monaco-editor-container"></div>
+        </div>
+
+        <!-- Right: Preview -->
+        <div class="preview-panel">
+            <div class="panel-header">
+                <span><i class="fas fa-eye"></i> Live Preview</span>
+            </div>
+            <div class="preview-area">
+                <div class="slide-wrapper" id="previewWrapper">
+                    <div class="slide-content" id="previewContent"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Presentation Mode Overlay -->
+    <div id="presentationMode" class="presentation-mode">
+        <div class="pres-wrapper">
+            <div class="slide-content" id="presContent"></div>
+        </div>
+        <div class="pres-controls">
+            <button class="pres-btn" onclick="editor.prevSlide()" title="Previous"><i
+                    class="fas fa-chevron-left"></i></button>
+            <button class="pres-btn" onclick="editor.togglePresentation()" title="Exit"><i
+                    class="fas fa-times"></i></button>
+            <button class="pres-btn" onclick="editor.nextSlide()" title="Next"><i
+                    class="fas fa-chevron-right"></i></button>
+        </div>
+        <div class="pres-counter" id="presCounter">1 / 1</div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="notification" id="notification">Ready!</div>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var editor = {
+                slides: [],
+                currentIndex: -1,
+                transition: 'slide-right',
+                autoApplyTimer: null,
+
+                addSlide: function () {
+                    this.slides.push({ id: Date.now(), html: this.defaultTemplate(), transition: this.transition });
+                    this.selectSlide(this.slides.length - 1);
+                    this.saveToStorage();
+                    this.notify('New slide added');
+                },
+
+                duplicateSlide: function () {
+                    if (this.currentIndex === -1) return;
+                    this.slides.splice(this.currentIndex + 1, 0, {
+                        id: Date.now(),
+                        html: this.slides[this.currentIndex].html,
+                        transition: this.slides[this.currentIndex].transition
+                    });
+                    this.selectSlide(this.currentIndex + 1);
+                    this.saveToStorage();
+                    this.notify('Slide duplicated');
+                },
+
+                deleteSlide: function () {
+                    if (this.currentIndex === -1 || !this.slides.length) return;
+                    this.slides.splice(this.currentIndex, 1);
+                    this.currentIndex = Math.min(this.currentIndex, this.slides.length - 1);
+                    this.selectSlide(this.currentIndex);
+                    this.saveToStorage();
+                    this.notify('Slide deleted');
+                },
+
+                selectSlide: function (idx) {
+                    var previewEl = document.getElementById('previewContent');
+                    if (idx < 0 || idx >= this.slides.length) {
+                        this.currentIndex = -1;
+                        if (window.monacoEditor) window.monacoEditor.setValue('');
+                        if (previewEl) previewEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;"><div style="text-align:center;"><i class="fas fa-arrow-left" style="font-size:40px;margin-bottom:15px;opacity:0.3;"></i><p>Add or select a slide</p></div></div>';
+                    } else {
+                        this.currentIndex = idx;
+                        if (window.monacoEditor) window.monacoEditor.setValue(this.slides[idx].html);
+                        this.renderPreview();
+                    }
+                    this.renderThumbnails();
+                },
+
+                applyChanges: function () {
+                    if (this.currentIndex === -1) return;
+                    if (window.monacoEditor) {
+                        this.slides[this.currentIndex].html = window.monacoEditor.getValue();
+                        this.renderPreview();
+                        this.renderThumbnails();
+                        this.saveToStorage();
+                        this.notify('Changes applied');
+                    }
+                },
+
+                formatCode: function () {
+                    if (window.monacoEditor) {
+                        window.monacoEditor.trigger('format', 'editor.action.formatDocument');
+                        this.notify('Document formatted');
+                    }
+                },
+
+                renderPreview: function () {
+                    if (this.currentIndex === -1) return;
+                    var html = this.slides[this.currentIndex].html;
+                    var previewEl = document.getElementById('previewContent');
+                    if (previewEl) previewEl.innerHTML = this.extractBody(html);
+                    this.injectStyles('preview-style', this.extractStyles(html));
+                    requestAnimationFrame(this.scalePreview.bind(this));
+                },
+
+                scalePreview: function () {
+                    var wrap = document.getElementById('previewWrapper');
+                    var content = document.getElementById('previewContent');
+                    if (!wrap || !content) return;
+                    var scale = Math.min(wrap.clientWidth / 1280, wrap.clientHeight / 720, 1);
+                    content.style.transform = 'scale(' + scale + ')';
+                },
+
+                renderThumbnails: function () {
+                    var panel = document.getElementById('thumbnailsPanel');
+                    if (!panel) return;
+                    if (!this.slides.length) {
+                        panel.innerHTML = '<div class="no-slides"><i class="fas fa-file-code"></i><div>No slides yet</div></div>';
+                        return;
+                    }
+                    var h = '';
+                    for (var i = 0; i < this.slides.length; i++) {
+                        h += '<div class="thumb ' + (i === this.currentIndex ? 'active' : '') + '" onclick="editor.selectSlide(' + i + ')">' +
+                            '<div class="thumb-num">' + (i + 1) + '</div>' +
+                            '<div class="thumb-content" id="thumb-content-' + i + '">' + this.extractBody(this.slides[i].html) + '</div></div>';
+                    }
+                    h += '<button class="add-btn" onclick="editor.addSlide()"><i class="fas fa-plus"></i> Add Slide</button>';
+                    panel.innerHTML = h;
+                    for (var j = 0; j < this.slides.length; j++) {
+                        this.injectStyles('thumb-style-' + j, this.extractStyles(this.slides[j].html).replace(/body/g, '#thumb-content-' + j));
+                    }
+                },
+
+                togglePresentation: function () {
+                    var presMode = document.getElementById('presentationMode');
+                    if (!presMode) return;
+                    var active = presMode.classList.contains('active');
+                    if (active) {
+                        if (document.fullscreenElement) document.exitFullscreen().catch(function () { });
+                        presMode.classList.remove('active');
+                        document.body.style.overflow = '';
+                    } else {
+                        if (!this.slides.length) { this.notify('Add slides first!'); return; }
+                        presMode.classList.add('active');
+                        document.body.style.overflow = 'hidden';
+                        var elem = document.documentElement;
+                        if (elem.requestFullscreen) elem.requestFullscreen().catch(function () { });
+                        else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+                        else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+                        this.showPresentationSlide(this.currentIndex);
+                    }
+                },
+
+                showPresentationSlide: function (idx) {
+                    if (idx < 0 || idx >= this.slides.length) return;
+                    var slide = this.slides[idx];
+                    var presContent = document.getElementById('presContent');
+                    var presCounter = document.getElementById('presCounter');
+                    if (!presContent) return;
+                    presContent.className = 'slide-content';
+                    void presContent.offsetWidth;
+                    var trans = slide.transition || this.transition;
+                    presContent.classList.add('anim-' + trans);
+                    presContent.innerHTML = this.extractBody(slide.html);
+                    this.injectStyles('pres-style', this.extractStyles(slide.html));
+                    if (trans === 'text') {
+                        var container = presContent.querySelector('.slide-container') || presContent;
+                        var delay = 0;
+                        var step = 0.07;
+                        function walk(el) {
+                            for (var c = 0; c < el.children.length; c++) {
+                                var child = el.children[c];
+                                var tag = child.tagName;
+                                if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'LINK' || tag === 'META') continue;
+                                var computedOpacity = window.getComputedStyle(child).opacity;
+                                if (computedOpacity === '1') {
+                                    child.style.opacity = '0';
+                                    child.style.animation = 'textReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards';
+                                    child.style.animationDelay = delay + 's';
+                                    delay += step;
+                                }
+                                walk(child);
+                            }
+                        }
+                        walk(container);
+                    }
+
+                    if (presCounter) presCounter.textContent = (idx + 1) + ' / ' + this.slides.length;
+                    requestAnimationFrame(this.scalePresentation.bind(this));
+                },
+
+                scalePresentation: function () {
+                    var wrap = document.querySelector('.pres-wrapper');
+                    var content = document.getElementById('presContent');
+                    if (!wrap || !content) return;
+                    var scale = Math.min(wrap.clientWidth / 1280, wrap.clientHeight / 720);
+                    content.style.width = '1280px';
+                    content.style.height = '720px';
+                    content.style.transform = 'scale(' + scale + ')';
+                },
+
+                nextSlide: function () {
+                    if (this.currentIndex < this.slides.length - 1) {
+                        this.currentIndex++;
+                        this.showPresentationSlide(this.currentIndex);
+                    }
+                },
+
+                prevSlide: function () {
+                    if (this.currentIndex > 0) {
+                        this.currentIndex--;
+                        this.showPresentationSlide(this.currentIndex);
+                    }
+                },
+
+                setTransition: function (t) {
+                    this.transition = t;
+                    if (this.currentIndex !== -1) this.slides[this.currentIndex].transition = t;
+                    var buttons = document.querySelectorAll('.trans-btn');
+                    for (var i = 0; i < buttons.length; i++) {
+                        buttons[i].classList.toggle('active', buttons[i].getAttribute('data-t') === t);
+                    }
+                    this.saveToStorage();
+                },
+
+                exportHTML: function () {
+                    if (!this.slides.length) { this.notify('No slides to export!'); return; }
+                    var allStyles = [];
+                    var slideBodies = [];
+                    for (var i = 0; i < this.slides.length; i++) {
+                        var st = this.extractStyles(this.slides[i].html);
+                        if (st) allStyles.push(st);
+                        var trans = this.slides[i].transition || this.transition;
+                        slideBodies.push('<!-- Slide ' + (i + 1) + ' -->\n<div class="exported-slide" data-transition="' + trans + '">\n' + this.extractBody(this.slides[i].html) + '\n</div>');
+                    }
+
+                    var animationCSS = [
+                        '        @keyframes slideInRight {',
+                        '            from { transform: translateX(100%); opacity: 0; }',
+                        '            to { transform: translateX(0); opacity: 1; }',
+                        '        }',
+                        '        @keyframes slideInLeft {',
+                        '            from { transform: translateX(-100%); opacity: 0; }',
+                        '            to { transform: translateX(0); opacity: 1; }',
+                        '        }',
+                        '        @keyframes fadeIn {',
+                        '            from { opacity: 0; }',
+                        '            to { opacity: 1; }',
+                        '        }',
+                        '        @keyframes zoomIn {',
+                        '            from { transform: scale(0.7); opacity: 0; }',
+                        '            to { transform: scale(1); opacity: 1; }',
+                        '        }',
+                        '        @keyframes slideUp {',
+                        '            from { transform: translateY(60px); opacity: 0; }',
+                        '            to { transform: translateY(0); opacity: 1; }',
+                        '        }',
+                        '        @keyframes textReveal {',
+                        '            from { opacity: 0; transform: translateY(35px); filter: blur(3px); }',
+                        '            to { opacity: 1; transform: translateY(0); filter: blur(0); }',
+                        '        }',
+                        '        .exported-slide {',
+                        '            width: 1280px; height: 720px; border-radius: 16px;',
+                        '            overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5);',
+                        '            flex-shrink: 0; background: #0d1117;',
+                        '        }',
+                        '        .anim-slide-right { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }',
+                        '        .anim-slide-left { animation: slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1); }',
+                        '        .anim-fade { animation: fadeIn 0.4s ease; }',
+                        '        .anim-zoom { animation: zoomIn 0.4s cubic-bezier(0.16, 1, 0.3, 1); }',
+                        '        .anim-slide-up { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }',
+                        '        @media (max-width: 1320px) {',
+                        '            .exported-slide { transform: scale(0.65); transform-origin: top center; margin-bottom: -240px; }',
+                        '        }'
+                    ];
+
+                    var observerScript = [
+                        '    <script>',
+                        '        (function() {',
+                        '            var slides = document.querySelectorAll(".exported-slide");',
+                        '            var observer = new IntersectionObserver(function(entries) {',
+                        '                entries.forEach(function(entry) {',
+                        '                    if (entry.isIntersecting) {',
+                        '                        var slide = entry.target;',
+                        '                        var trans = slide.getAttribute("data-transition") || "slide-right";',
+                        '                        if (trans === "text") {',
+                        '                            var container = slide.querySelector(".slide-container") || slide;',
+                        '                            var delay = 0;',
+                        '                            var step = 0.07;',
+                        '                            function walk(el) {',
+                        '                                for (var c = 0; c < el.children.length; c++) {',
+                        '                                    var child = el.children[c];',
+                        '                                    var tag = child.tagName;',
+                        '                                    if (tag === "SCRIPT" || tag === "STYLE" || tag === "LINK" || tag === "META") continue;',
+                        '                                    var computedOpacity = window.getComputedStyle(child).opacity;',
+                        '                                    if (computedOpacity === "1") {',
+                        '                                        child.style.opacity = "0";',
+                        '                                        child.style.animation = "textReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards";',
+                        '                                        child.style.animationDelay = delay + "s";',
+                        '                                        delay += step;',
+                        '                                    }',
+                        '                                    walk(child);',
+                        '                                }',
+                        '                            }',
+                        '                            walk(container);',
+                        '                        } else {',
+                        '                            slide.classList.remove("anim-" + trans);',
+                        '                            void slide.offsetWidth;',
+                        '                            slide.classList.add("anim-" + trans);',
+                        '                        }',
+                        '                    }',
+                        '                });',
+                        '            }, { threshold: 0.25 });',
+                        '            slides.forEach(function(s) { observer.observe(s); });',
+                        '        })();',
+                        '    <\/script>'
+                    ];
+
+                    var lines = [
+                        '<!DOCTYPE html>',
+                        '<html lang="en">',
+                        '<head>',
+                        '    <meta charset="UTF-8">',
+                        '    <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+                        '    <title>Exported Slides</title>',
+                        '    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">',
+                        '    <style>',
+                        '        html {',
+                        '            overflow-x: auto;',
+                        '        }',
+                        '        html {',
+                        '            margin: 0; padding: 0;',
+                        '        }',
+                        '        body {',
+                        '            padding: 20px !important; background: #1a1a1a;',
+                        '            font-family: "Inter", sans-serif;',
+                        '            display: flex; flex-direction: column; align-items: center; gap: 40px;',
+                        '            min-width: min-content;',
+                        '        }',
+                        animationCSS.join('\n'),
+                        allStyles.join('\n'),
+                        '    </style>',
+                        '</head>',
+                        '<body>',
+                        slideBodies.join('\n\n'),
+                        observerScript.join('\n'),
+                        '</body>',
+                        '</html>'
+                    ];
+
+                    var blob = new Blob([lines.join('\n')], { type: 'text/html' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'slides-export.html';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    this.notify('HTML exported!');
+                },
+                exportProject: function () {
+                    var data = {
+                        version: 1,
+                        slides: this.slides,
+                        currentIndex: this.currentIndex,
+                        transition: this.transition
+                    };
+                    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'slide-project.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    this.notify('Project saved to file');
+                },
+
+                importProject: function (input) {
+                    var self = this;
+                    var file = input.files[0];
+                    if (!file) return;
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        try {
+                            var data = JSON.parse(e.target.result);
+                            if (data.slides && Array.isArray(data.slides)) {
+                                self.slides = data.slides;
+                                self.currentIndex = (typeof data.currentIndex === 'number') ? data.currentIndex : 0;
+                                self.transition = data.transition || 'slide-right';
+                                self.selectSlide(self.currentIndex);
+                                self.saveToStorage();
+                                self.notify('Project loaded');
+                            } else {
+                                self.notify('Invalid project file');
+                            }
+                        } catch (err) {
+                            self.notify('Error reading project file');
+                        }
+                        input.value = '';
+                    };
+                    reader.readAsText(file);
+                },
+
+                saveToStorage: function () {
+                    try {
+                        var data = {
+                            slides: this.slides,
+                            currentIndex: this.currentIndex,
+                            transition: this.transition
+                        };
+                        localStorage.setItem('slideEditorProject', JSON.stringify(data));
+                    } catch (e) { }
+                },
+
+                loadFromStorage: function () {
+                    try {
+                        var raw = localStorage.getItem('slideEditorProject');
+                        if (raw) {
+                            var data = JSON.parse(raw);
+                            if (data.slides && Array.isArray(data.slides) && data.slides.length > 0) {
+                                this.slides = data.slides;
+                                this.currentIndex = (typeof data.currentIndex === 'number') ? data.currentIndex : 0;
+                                this.transition = data.transition || 'slide-right';
+                                this.selectSlide(this.currentIndex);
+                                return true;
+                            }
+                        }
+                    } catch (e) { }
+                    return false;
+                },
+
+                extractBody: function (html) {
+                    var m = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+                    return m ? m[1] : html;
+                },
+
+                extractStyles: function (html) {
+                    var m = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+                    return m ? m.map(function (s) { return s.replace(/<\/?style[^>]*>/gi, ''); }).join('\n') : '';
+                },
+
+                injectStyles: function (id, css) {
+                    var el = document.getElementById(id);
+                    if (!el) {
+                        el = document.createElement('style');
+                        el.id = id;
+                        document.head.appendChild(el);
+                    }
+                    el.textContent = css;
+                },
+
+                notify: function (msg) {
+                    var n = document.getElementById('notification');
+                    if (!n) return;
+                    n.textContent = msg;
+                    n.classList.add('show');
+                    setTimeout(function () { n.classList.remove('show'); }, 2000);
+                },
+
+                defaultTemplate: function () {
+                    return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8"/>\n<title>Slide</title>\n<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>\n<style>\nbody { margin:0; padding:0; overflow:hidden; background:#0d1117; font-family:sans-serif; }\n.slide-container { width:1280px; height:720px; background:linear-gradient(135deg,#0d1117,#161b22); padding:40px 60px; box-sizing:border-box; }\nh1 { color:#fff; font-size:48px; margin:0 0 20px; }\np { color:#c9d1d9; font-size:20px; line-height:1.6; }\n</style>\n</head>\n<body>\n<div class="slide-container">\n<h1><i class="fas fa-rocket"></i> Your Slide Title</h1>\n<p>Edit this HTML to create your own slide content.</p>\n</div>\n</body>\n</html>';
+                }
+            };
+
+            window.editor = editor;
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function (e) {
+                var pres = document.getElementById('presentationMode');
+                if (pres && pres.classList.contains('active')) {
+                    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+                        e.preventDefault(); editor.nextSlide();
+                    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                        e.preventDefault(); editor.prevSlide();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault(); editor.togglePresentation();
+                    }
+                } else if (e.key === 'F5') {
+                    e.preventDefault(); editor.togglePresentation();
+                }
+            });
+
+            // Initialize Monaco Editor
+            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+            require(['vs/editor/editor.main'], function() {
+                window.monacoEditor = monaco.editor.create(document.getElementById('htmlEditor'), {
+                    value: editor.currentIndex >= 0 ? editor.slides[editor.currentIndex].html : editor.defaultTemplate(),
+                    language: 'html',
+                    theme: 'vs-dark',
+                    automaticLayout: true,
+                    fontSize: 13,
+                    tabSize: 2,
+                    insertSpaces: true,
+                    fontFamily: "'Consolas', 'Monaco', monospace",
+                    formatOnType: true,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on',
+                    lineNumbers: 'on',
+                    folding: true,
+                    renderLineHighlight: 'all',
+                    selectOnLineNumbers: true,
+                    matchBrackets: 'always',
+                    autoIndent: 'advanced',
+                    roundedSelection: false
+                });
+
+                // Add Alt+Shift+F shortcut for format document
+                window.monacoEditor.addCommand(monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, function() {
+                    window.monacoEditor.trigger('format', 'editor.action.formatDocument');
+                    editor.notify('Document formatted');
+                });
+
+                // Auto-apply debounce using Monaco's change event
+                window.monacoEditor.onDidChangeModelContent(function() {
+                    clearTimeout(editor.autoApplyTimer);
+                    editor.autoApplyTimer = setTimeout(function () { editor.applyChanges(); }, 800);
+                });
+
+                // Init after Monaco is ready
+                if (!editor.loadFromStorage()) {
+                    editor.addSlide();
+                }
+            });
+
+            // Resize handler
+            window.addEventListener('resize', function () {
+                editor.scalePreview();
+                var pres = document.getElementById('presentationMode');
+                if (pres && pres.classList.contains('active')) editor.scalePresentation();
+            });
+
+            // Fullscreen change handler
+            document.addEventListener('fullscreenchange', function () {
+                if (!document.fullscreenElement) {
+                    var pres = document.getElementById('presentationMode');
+                    if (pres) pres.classList.remove('active');
+                    document.body.style.overflow = '';
+                }
+            });
+        })();
+    </script>
+</body>
+
+</html>

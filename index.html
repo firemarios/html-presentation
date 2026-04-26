@@ -177,11 +177,15 @@
         }
 
         .thumb-content {
-            width: 100%;
-            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1280px;
+            height: 720px;
+            border: none;
+            pointer-events: none;
             transform: scale(0.15);
             transform-origin: top left;
-            pointer-events: none;
         }
 
         .add-btn {
@@ -284,6 +288,7 @@
             position: relative;
             transform-origin: center center;
             flex-shrink: 0;
+            border: none;
         }
 
         /* Presentation Mode */
@@ -545,7 +550,7 @@
             </div>
             <div class="preview-area">
                 <div class="slide-wrapper" id="previewWrapper">
-                    <div class="slide-content" id="previewContent"></div>
+                    <iframe class="slide-content" id="previewContent"></iframe>
                 </div>
             </div>
         </div>
@@ -555,7 +560,7 @@
     <!-- Presentation Mode Overlay -->
     <div id="presentationMode" class="presentation-mode">
         <div class="pres-wrapper">
-            <div class="slide-content" id="presContent"></div>
+            <iframe class="slide-content" id="presContent"></iframe>
         </div>
         <div class="pres-controls">
             <button class="pres-btn" onclick="editor.prevSlide()" title="Previous"><i
@@ -614,7 +619,12 @@
                     if (idx < 0 || idx >= this.slides.length) {
                         this.currentIndex = -1;
                         if (window.monacoEditor) window.monacoEditor.setValue('');
-                        if (previewEl) previewEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;"><div style="text-align:center;"><i class="fas fa-arrow-left" style="font-size:40px;margin-bottom:15px;opacity:0.3;"></i><p>Add or select a slide</p></div></div>';
+                        if (previewEl && previewEl.contentDocument) {
+                            var doc = previewEl.contentDocument;
+                            doc.open();
+                            doc.write('<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#555;"><div style="text-align:center;"><i class="fas fa-arrow-left" style="font-size:40px;margin-bottom:15px;opacity:0.3;"></i><p>Add or select a slide</p></div></div>');
+                            doc.close();
+                        }
                     } else {
                         this.currentIndex = idx;
                         if (window.monacoEditor) window.monacoEditor.setValue(this.slides[idx].html);
@@ -645,8 +655,12 @@
                     if (this.currentIndex === -1) return;
                     var html = this.slides[this.currentIndex].html;
                     var previewEl = document.getElementById('previewContent');
-                    if (previewEl) previewEl.innerHTML = this.extractBody(html);
-                    this.injectStyles('preview-style', this.extractStyles(html));
+                    if (previewEl && previewEl.contentDocument) {
+                        var doc = previewEl.contentDocument;
+                        doc.open();
+                        doc.write(html);
+                        doc.close();
+                    }
                     requestAnimationFrame(this.scalePreview.bind(this));
                 },
 
@@ -669,13 +683,34 @@
                     for (var i = 0; i < this.slides.length; i++) {
                         h += '<div class="thumb ' + (i === this.currentIndex ? 'active' : '') + '" onclick="editor.selectSlide(' + i + ')">' +
                             '<div class="thumb-num">' + (i + 1) + '</div>' +
-                            '<div class="thumb-content" id="thumb-content-' + i + '">' + this.extractBody(this.slides[i].html) + '</div></div>';
+                            '<iframe class="thumb-content" id="thumb-iframe-' + i + '" width="1280" height="720"></iframe></div>';
                     }
                     h += '<button class="add-btn" onclick="editor.addSlide()"><i class="fas fa-plus"></i> Add Slide</button>';
                     panel.innerHTML = h;
-                    for (var j = 0; j < this.slides.length; j++) {
-                        this.injectStyles('thumb-style-' + j, this.extractStyles(this.slides[j].html).replace(/body/g, '#thumb-content-' + j));
-                    }
+
+                    // Populate iframes after DOM update
+                    var self = this;
+                    requestAnimationFrame(function() {
+                        for (var j = 0; j < self.slides.length; j++) {
+                            var iframe = document.getElementById('thumb-iframe-' + j);
+                            if (iframe && iframe.contentDocument) {
+                                var html = self.slides[j].html;
+                                var doc = iframe.contentDocument;
+                                doc.open();
+                                doc.write(html);
+                                doc.close();
+                                
+                                // Calculate dynamic scale based on thumbnail size
+                                var thumb = iframe.parentElement;
+                                if (thumb) {
+                                    var scaleX = thumb.clientWidth / 1280;
+                                    var scaleY = thumb.clientHeight / 720;
+                                    var scale = Math.min(scaleX, scaleY);
+                                    iframe.style.transform = 'scale(' + scale + ')';
+                                }
+                            }
+                        }
+                    });
                 },
 
                 togglePresentation: function () {
@@ -708,18 +743,30 @@
                     void presContent.offsetWidth;
                     var trans = slide.transition || this.transition;
                     presContent.classList.add('anim-' + trans);
-                    presContent.innerHTML = this.extractBody(slide.html);
-                    this.injectStyles('pres-style', this.extractStyles(slide.html));
+                    
+                    // Write HTML to iframe
+                    var doc = presContent.contentDocument;
+                    doc.open();
+                    doc.write(slide.html);
+                    doc.close();
+                    
+                    // Handle text reveal transition inside iframe
                     if (trans === 'text') {
-                        var container = presContent.querySelector('.slide-container') || presContent;
+                        // Inject textReveal keyframe into iframe
+                        var styleEl = doc.createElement('style');
+                        styleEl.textContent = '@keyframes textReveal { from { opacity: 0; transform: translateY(35px); filter: blur(3px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }';
+                        doc.head.appendChild(styleEl);
+                        
+                        var container = doc.querySelector('.slide-container') || doc.body;
                         var delay = 0;
                         var step = 0.07;
+                        var iframeWin = presContent.contentWindow;
                         function walk(el) {
                             for (var c = 0; c < el.children.length; c++) {
                                 var child = el.children[c];
                                 var tag = child.tagName;
                                 if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'LINK' || tag === 'META') continue;
-                                var computedOpacity = window.getComputedStyle(child).opacity;
+                                var computedOpacity = iframeWin.getComputedStyle(child).opacity;
                                 if (computedOpacity === '1') {
                                     child.style.opacity = '0';
                                     child.style.animation = 'textReveal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards';

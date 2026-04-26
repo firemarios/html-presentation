@@ -536,8 +536,10 @@
             <div class="panel-header">
                 <span><i class="fas fa-code"></i> HTML Source</span>
                 <div style="display:flex;gap:6px;">
-                    <button class="toolbar-btn" onclick="editor.formatCode()" style="padding:2px 10px;font-size:11px;" title="Format Document (Alt+Shift+F)"><i class="fas fa-align-left"></i> Format</button>
-                    <button class="toolbar-btn" onclick="editor.applyChanges()" style="padding:2px 10px;font-size:11px;"><i class="fas fa-sync"></i> Apply</button>
+                    <button class="toolbar-btn" onclick="editor.formatCode()" style="padding:2px 10px;font-size:11px;"
+                        title="Format Document (Alt+Shift+F)"><i class="fas fa-align-left"></i> Format</button>
+                    <button class="toolbar-btn" onclick="editor.applyChanges()"
+                        style="padding:2px 10px;font-size:11px;"><i class="fas fa-sync"></i> Apply</button>
                 </div>
             </div>
             <div id="htmlEditor" class="monaco-editor-container"></div>
@@ -690,7 +692,7 @@
 
                     // Populate iframes after DOM update
                     var self = this;
-                    requestAnimationFrame(function() {
+                    requestAnimationFrame(function () {
                         for (var j = 0; j < self.slides.length; j++) {
                             var iframe = document.getElementById('thumb-iframe-' + j);
                             if (iframe && iframe.contentDocument) {
@@ -699,7 +701,7 @@
                                 doc.open();
                                 doc.write(html);
                                 doc.close();
-                                
+
                                 // Calculate dynamic scale based on thumbnail size
                                 var thumb = iframe.parentElement;
                                 if (thumb) {
@@ -743,20 +745,20 @@
                     void presContent.offsetWidth;
                     var trans = slide.transition || this.transition;
                     presContent.classList.add('anim-' + trans);
-                    
+
                     // Write HTML to iframe
                     var doc = presContent.contentDocument;
                     doc.open();
                     doc.write(slide.html);
                     doc.close();
-                    
+
                     // Handle text reveal transition inside iframe
                     if (trans === 'text') {
                         // Inject textReveal keyframe into iframe
                         var styleEl = doc.createElement('style');
                         styleEl.textContent = '@keyframes textReveal { from { opacity: 0; transform: translateY(35px); filter: blur(3px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }';
                         doc.head.appendChild(styleEl);
-                        
+
                         var container = doc.querySelector('.slide-container') || doc.body;
                         var delay = 0;
                         var step = 0.07;
@@ -825,7 +827,12 @@
                         var st = this.extractStyles(this.slides[i].html);
                         if (st) allStyles.push(st);
                         var trans = this.slides[i].transition || this.transition;
-                        slideBodies.push('<!-- Slide ' + (i + 1) + ' -->\n<div class="exported-slide" data-transition="' + trans + '">\n' + this.extractBody(this.slides[i].html) + '\n</div>');
+                        slideBodies.push(
+                            '<!-- Slide ' + (i + 1) + ' -->\n' +
+                            '<iframe class="exported-slide" data-transition="' + trans + '" src="data:text/html;charset=utf-8,' +
+                            encodeURIComponent(this.slides[i].html) +
+                            '"></iframe>'
+                        );
                     }
 
                     var animationCSS = [
@@ -1031,6 +1038,14 @@
                     return m ? m[1] : html;
                 },
 
+                escapeHtml: function (str) {
+                    return str.replace(/&/g, '&amp;')
+                              .replace(/"/g, '"')
+                              .replace(/'/g, '&#39;')
+                              .replace(/</g, '<')
+                              .replace(/>/g, '>');
+                },
+
                 extractStyles: function (html) {
                     var m = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
                     return m ? m.map(function (s) { return s.replace(/<\/?style[^>]*>/gi, ''); }).join('\n') : '';
@@ -1078,8 +1093,8 @@
             });
 
             // Initialize Monaco Editor
-            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
-            require(['vs/editor/editor.main'], function() {
+            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+            require(['vs/editor/editor.main'], function () {
                 window.monacoEditor = monaco.editor.create(document.getElementById('htmlEditor'), {
                     value: editor.currentIndex >= 0 ? editor.slides[editor.currentIndex].html : editor.defaultTemplate(),
                     language: 'html',
@@ -1103,13 +1118,13 @@
                 });
 
                 // Add Alt+Shift+F shortcut for format document
-                window.monacoEditor.addCommand(monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, function() {
+                window.monacoEditor.addCommand(monaco.KeyMod.Alt | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, function () {
                     window.monacoEditor.trigger('format', 'editor.action.formatDocument');
                     editor.notify('Document formatted');
                 });
 
                 // Auto-apply debounce using Monaco's change event
-                window.monacoEditor.onDidChangeModelContent(function() {
+                window.monacoEditor.onDidChangeModelContent(function () {
                     clearTimeout(editor.autoApplyTimer);
                     editor.autoApplyTimer = setTimeout(function () { editor.applyChanges(); }, 800);
                 });

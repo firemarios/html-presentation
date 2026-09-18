@@ -289,6 +289,7 @@
             transform-origin: center center;
             flex-shrink: 0;
             border: none;
+            display: block;
         }
 
         /* Presentation Mode */
@@ -589,7 +590,7 @@
                 autoApplyTimer: null,
 
                 addSlide: function () {
-                    this.slides.push({ id: Date.now(), html: this.defaultTemplate(), transition: this.transition });
+                    this.slides.push({id: Date.now(), html: this.defaultTemplate(), transition: this.transition});
                     this.selectSlide(this.slides.length - 1);
                     this.saveToStorage();
                     this.notify('New slide added');
@@ -653,6 +654,127 @@
                     }
                 },
 
+                getSlideDimensions: function (html) {
+                    var fallback = {width: 1280, height: 720};
+
+                    if (!html || typeof html !== 'string') {
+                        return fallback;
+                    }
+
+                    // 1. Look for an explicit .slide-container width/height
+                    var containerMatch = html.match(
+                        /\.slide-container[\s\S]*?width\s*:\s*(\d+(?:\.\d+)?)px[\s\S]*?height\s*:\s*(\d+(?:\.\d+)?)px/i
+                    );
+
+                    if (containerMatch) {
+                        return {
+                            width: parseFloat(containerMatch[1]),
+                            height: parseFloat(containerMatch[2])
+                        };
+                    }
+
+                    // 2. Look for width/height on an element with data-screen-label
+                    var screenMatch = html.match(
+                        /data-screen-label[\s\S]*?style\s*=\s*["'][\s\S]*?width\s*:\s*(\d+(?:\.\d+)?)px[\s\S]*?height\s*:\s*(\d+(?:\.\d+)?)px/i
+                    );
+
+                    if (screenMatch) {
+                        return {
+                            width: parseFloat(screenMatch[1]),
+                            height: parseFloat(screenMatch[2])
+                        };
+                    }
+
+                    // 3. Look for the first large fixed-width/fixed-height element
+                    var dimensionsMatch = html.match(
+                        /width\s*:\s*(\d+(?:\.\d+)?)px[\s\S]{0,500}?height\s*:\s*(\d+(?:\.\d+)?)px/i
+                    );
+
+                    if (dimensionsMatch) {
+                        var width = parseFloat(dimensionsMatch[1]);
+                        var height = parseFloat(dimensionsMatch[2]);
+
+                        // Avoid accidentally detecting tiny objects.
+                        if (width >= 500 && height >= 300) {
+                            return {
+                                width: width,
+                                height: height
+                            };
+                        }
+                    }
+
+                    return fallback;
+                },
+
+                getRenderedSlideDimensions: function (iframe, html) {
+                    var detected = this.getSlideDimensions(html);
+
+                    if (!iframe || !iframe.contentDocument) {
+                        return detected;
+                    }
+
+                    var doc = iframe.contentDocument;
+                    var root = doc.documentElement;
+                    var body = doc.body;
+
+                    var candidates = [];
+
+                    // Explicit slide container
+                    var container = doc.querySelector('.slide-container');
+
+                    if (container) {
+                        var rect = container.getBoundingClientRect();
+
+                        if (rect.width > 0 && rect.height > 0) {
+                            candidates.push({
+                                width: rect.width,
+                                height: rect.height
+                            });
+                        }
+
+                        var style = iframe.contentWindow.getComputedStyle(container);
+
+                        var cssWidth = parseFloat(style.width);
+                        var cssHeight = parseFloat(style.height);
+
+                        if (cssWidth > 0 && cssHeight > 0) {
+                            candidates.push({
+                                width: cssWidth,
+                                height: cssHeight
+                            });
+                        }
+                    }
+
+                    // data-screen-label is another useful indicator
+                    var screen = doc.querySelector('[data-screen-label]');
+
+                    if (screen) {
+                        var screenRect = screen.getBoundingClientRect();
+
+                        if (screenRect.width > 0 && screenRect.height > 0) {
+                            candidates.push({
+                                width: screenRect.width,
+                                height: screenRect.height
+                            });
+                        }
+                    }
+
+                    if (candidates.length) {
+                        // Prefer the largest sensible candidate.
+                        candidates.sort(function (a, b) {
+                            return (b.width * b.height) - (a.width * a.height);
+                        });
+
+                        var result = candidates[0];
+
+                        if (result.width >= 500 && result.height >= 300) {
+                            return result;
+                        }
+                    }
+
+                    return detected;
+                },
+
                 renderPreview: function () {
                     if (this.currentIndex === -1) return;
                     var html = this.slides[this.currentIndex].html;
@@ -669,9 +791,40 @@
                 scalePreview: function () {
                     var wrap = document.getElementById('previewWrapper');
                     var content = document.getElementById('previewContent');
+
                     if (!wrap || !content) return;
-                    var scale = Math.min(wrap.clientWidth / 1280, wrap.clientHeight / 720, 1);
+
+                    var html = this.currentIndex >= 0
+                        ? this.slides[this.currentIndex].html
+                        : '';
+
+                    var dimensions = this.getRenderedSlideDimensions(content, html);
+
+                    var slideWidth = dimensions.width;
+                    var slideHeight = dimensions.height;
+
+                    if (!slideWidth || !slideHeight) return;
+
+                    var availableWidth = wrap.clientWidth;
+                    var availableHeight = wrap.clientHeight;
+
+                    if (availableWidth <= 0 || availableHeight <= 0) return;
+
+                    // Scale as large as possible while keeping the entire slide visible.
+                    var scale = Math.min(
+                        availableWidth / slideWidth,
+                        availableHeight / slideHeight
+                    );
+
+                    content.style.width = slideWidth + 'px';
+                    content.style.height = slideHeight + 'px';
+
+                    content.style.transformOrigin = 'center center';
                     content.style.transform = 'scale(' + scale + ')';
+
+                    // Store dimensions for other parts of the editor.
+                    content.dataset.slideWidth = slideWidth;
+                    content.dataset.slideHeight = slideHeight;
                 },
 
                 renderThumbnails: function () {
@@ -724,7 +877,7 @@
                         presMode.classList.remove('active');
                         document.body.style.overflow = '';
                     } else {
-                        if (!this.slides.length) { this.notify('Add slides first!'); return; }
+                        if (!this.slides.length) {this.notify('Add slides first!'); return;}
                         presMode.classList.add('active');
                         document.body.style.overflow = 'hidden';
                         var elem = document.documentElement;
@@ -820,7 +973,7 @@
                 },
 
                 exportHTML: function () {
-                    if (!this.slides.length) { this.notify('No slides to export!'); return; }
+                    if (!this.slides.length) {this.notify('No slides to export!'); return;}
                     var allStyles = [];
                     var slideBodies = [];
                     for (var i = 0; i < this.slides.length; i++) {
@@ -949,7 +1102,7 @@
                         '</html>'
                     ];
 
-                    var blob = new Blob([lines.join('\n')], { type: 'text/html' });
+                    var blob = new Blob([lines.join('\n')], {type: 'text/html'});
                     var url = URL.createObjectURL(blob);
                     var a = document.createElement('a');
                     a.href = url;
@@ -967,7 +1120,7 @@
                         currentIndex: this.currentIndex,
                         transition: this.transition
                     };
-                    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
                     var url = URL.createObjectURL(blob);
                     var a = document.createElement('a');
                     a.href = url;
@@ -1040,15 +1193,15 @@
 
                 escapeHtml: function (str) {
                     return str.replace(/&/g, '&amp;')
-                              .replace(/"/g, '"')
-                              .replace(/'/g, '&#39;')
-                              .replace(/</g, '<')
-                              .replace(/>/g, '>');
+                        .replace(/"/g, '"')
+                        .replace(/'/g, '&#39;')
+                        .replace(/</g, '<')
+                        .replace(/>/g, '>');
                 },
 
                 extractStyles: function (html) {
                     var m = html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
-                    return m ? m.map(function (s) { return s.replace(/<\/?style[^>]*>/gi, ''); }).join('\n') : '';
+                    return m ? m.map(function (s) {return s.replace(/<\/?style[^>]*>/gi, '');}).join('\n') : '';
                 },
 
                 injectStyles: function (id, css) {
@@ -1066,7 +1219,7 @@
                     if (!n) return;
                     n.textContent = msg;
                     n.classList.add('show');
-                    setTimeout(function () { n.classList.remove('show'); }, 2000);
+                    setTimeout(function () {n.classList.remove('show');}, 2000);
                 },
 
                 defaultTemplate: function () {
@@ -1093,7 +1246,7 @@
             });
 
             // Initialize Monaco Editor
-            require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } });
+            require.config({paths: {'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs'}});
             require(['vs/editor/editor.main'], function () {
                 window.monacoEditor = monaco.editor.create(document.getElementById('htmlEditor'), {
                     value: editor.currentIndex >= 0 ? editor.slides[editor.currentIndex].html : editor.defaultTemplate(),
@@ -1105,7 +1258,7 @@
                     insertSpaces: true,
                     fontFamily: "'Consolas', 'Monaco', monospace",
                     formatOnType: true,
-                    minimap: { enabled: false },
+                    minimap: {enabled: false},
                     scrollBeyondLastLine: false,
                     wordWrap: 'on',
                     lineNumbers: 'on',
@@ -1126,7 +1279,7 @@
                 // Auto-apply debounce using Monaco's change event
                 window.monacoEditor.onDidChangeModelContent(function () {
                     clearTimeout(editor.autoApplyTimer);
-                    editor.autoApplyTimer = setTimeout(function () { editor.applyChanges(); }, 800);
+                    editor.autoApplyTimer = setTimeout(function () {editor.applyChanges();}, 800);
                 });
 
                 // Init after Monaco is ready

@@ -1333,9 +1333,9 @@
             document.addEventListener('keydown', function (e) {
                 var pres = document.getElementById('presentationMode');
                 if (pres && pres.classList.contains('active')) {
-                    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
                         e.preventDefault(); editor.nextSlide();
-                    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
                         e.preventDefault(); editor.prevSlide();
                     } else if (e.key === 'Escape') {
                         e.preventDefault(); editor.togglePresentation();

@@ -368,7 +368,7 @@
         .pres-counter {
             position: fixed;
             bottom: 28px;
-            right: 30px;
+            right: 90px;
             color: rgba(255, 255, 255, 0.4);
             font-size: 13px;
             z-index: 1001;
@@ -470,6 +470,637 @@
 
 
 
+        /* AI Chat Panel */
+        .chat-fab {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1600;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .chat-fab:hover {
+            transform: scale(1.08);
+            background: #3a6fbf;
+        }
+
+        .chat-fab.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.6);
+        }
+
+        body.presenting .chat-fab {
+            display: none;
+        }
+
+        body.presenting .chat-panel {
+            display: none;
+        }
+
+        .chat-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            height: 100vh;
+            width: 400px;
+            max-width: 100vw;
+            background: var(--bg-panel);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transform: translateX(105%);
+            transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 1600;
+            box-shadow: -12px 0 40px rgba(0, 0, 0, 0.55);
+        }
+
+        .chat-panel.open {
+            transform: translateX(0);
+        }
+
+        .chat-header {
+            height: 50px;
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 14px;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .chat-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+            white-space: nowrap;
+        }
+
+        .chat-title i {
+            color: var(--accent);
+        }
+
+        .chat-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .status-dot.connected {
+            background: #2ea043;
+            box-shadow: 0 0 8px rgba(46, 160, 67, 0.8);
+        }
+
+        .chat-close {
+            background: transparent;
+            border: none;
+            color: var(--text-dim);
+            font-size: 15px;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .chat-close:hover {
+            background: var(--bg-panel);
+            color: var(--text);
+        }
+
+        .chat-new {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 13px;
+            cursor: pointer;
+            padding: 5px 9px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            margin-left: 6px;
+        }
+
+        .chat-new:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .chat-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 0;
+        }
+
+        .chat-empty {
+            margin: auto;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .chat-empty i {
+            font-size: 30px;
+            opacity: 0.3;
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .msg {
+            max-width: 85%;
+            padding: 9px 13px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .msg.bot {
+            align-self: flex-start;
+            background: var(--bg-darker);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-bottom-left-radius: 3px;
+        }
+
+        .msg.user {
+            align-self: flex-end;
+            background: var(--accent);
+            color: #fff;
+            border-bottom-right-radius: 3px;
+        }
+
+        .msg.empty {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        .msg p {
+            margin: 0 0 8px;
+        }
+
+        .msg p:last-child {
+            margin-bottom: 0;
+        }
+
+        .msg h1,
+        .msg h2,
+        .msg h3,
+        .msg h4,
+        .msg h5,
+        .msg h6 {
+            margin: 10px 0 6px;
+            color: var(--text);
+            font-size: 1em;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        .msg h1:first-child,
+        .msg h2:first-child,
+        .msg h3:first-child,
+        .msg h4:first-child,
+        .msg h5:first-child,
+        .msg h6:first-child {
+            margin-top: 0;
+        }
+
+        .msg ul,
+        .msg ol {
+            margin: 6px 0;
+            padding-left: 22px;
+        }
+
+        .msg li {
+            margin: 2px 0;
+        }
+
+        .msg li.task {
+            list-style: none;
+            margin-left: -16px;
+        }
+
+        .msg li.task input {
+            margin-right: 4px;
+            accent-color: var(--accent);
+        }
+
+        .msg li>p {
+            margin: 0;
+        }
+
+        .msg a {
+            color: #6cb6ff;
+            text-decoration: underline;
+        }
+
+        .msg code {
+            background: rgba(110, 118, 129, 0.25);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.92em;
+        }
+
+        .msg pre {
+            background: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin: 8px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .msg pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .msg blockquote {
+            border-left: 3px solid var(--accent);
+            margin: 8px 0;
+            padding: 2px 0 2px 12px;
+            color: var(--text-dim);
+        }
+
+        .msg table {
+            border-collapse: collapse;
+            margin: 8px 0;
+            font-size: 0.92em;
+            width: 100%;
+        }
+
+        .msg th,
+        .msg td {
+            border: 1px solid var(--border);
+            padding: 5px 9px;
+            text-align: left;
+        }
+
+        .msg th {
+            background: var(--bg-darker);
+            font-weight: 600;
+        }
+
+        .msg hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 10px 0;
+        }
+
+        .msg strong {
+            color: #fff;
+        }
+
+        .msg.user p {
+            margin: 0;
+        }
+
+        .slide-tag {
+            margin: 8px 0;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-darker);
+            overflow: hidden;
+        }
+
+        .slide-tag-head {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            user-select: none;
+        }
+
+        .slide-tag-head:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .slide-tag-head .slide-tag-icon {
+            color: var(--accent);
+        }
+
+        .slide-tag-head .slide-tag-icon.done {
+            color: #2ea043;
+        }
+
+        .slide-tag.closed .slide-tag-head {
+            opacity: 0.85;
+        }
+
+        .slide-tag-head .slide-tag-caret {
+            margin-left: auto;
+            color: var(--text-dim);
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+
+        .slide-tag.open .slide-tag-caret {
+            transform: rotate(180deg);
+        }
+
+        .slide-tag-code {
+            margin: 0;
+            padding: 10px 12px;
+            border-top: 1px solid var(--border);
+            background: #0b0b0b;
+            overflow: auto;
+            max-height: 280px;
+            font-size: 11px;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .slide-tag.open .slide-tag-code {
+            display: block;
+        }
+
+        .slide-tag-code code {
+            background: none;
+            border: none;
+            padding: 0;
+        }
+
+        .web-search-tag {
+            display: block;
+            width: 100%;
+            margin: 8px 0;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-darker);
+            overflow: hidden;
+        }
+
+        .web-search-head {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            user-select: none;
+        }
+
+        .web-search-head>span {
+            white-space: nowrap;
+        }
+
+        .web-search-head:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .web-search-head .web-search-icon {
+            color: #d29922;
+        }
+
+        .web-search-head .web-search-icon.done {
+            color: #2ea043;
+        }
+
+        .web-search-head .web-search-query {
+            color: var(--text-dim);
+            font-weight: 400;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .web-search-tag .slide-tag-caret {
+            margin-left: auto;
+            color: var(--text-dim);
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+
+        .web-search-tag.open .slide-tag-caret {
+            transform: rotate(180deg);
+        }
+
+        .web-search-results {
+            display: none;
+            border-top: 1px solid var(--border);
+            padding: 8px 12px;
+            font-size: 12px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .web-search-tag.open .web-search-results {
+            display: block;
+        }
+
+        .web-search-results .ws-empty {
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        .web-search-results ul {
+            margin: 0;
+            padding-left: 18px;
+        }
+
+        .web-search-results li {
+            margin: 3px 0;
+            color: var(--text);
+        }
+
+        .web-search-results li a {
+            color: #6cb6ff;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 7px;
+            height: 14px;
+            background: var(--accent);
+            margin-left: 2px;
+            vertical-align: text-bottom;
+            animation: blink 0.9s steps(2, start) infinite;
+        }
+
+        @keyframes blink {
+            to {
+                visibility: hidden;
+            }
+        }
+
+        .chat-form {
+            display: flex;
+            gap: 8px;
+            padding: 12px 14px;
+            border-top: 1px solid var(--border);
+            background: var(--bg-darker);
+            flex-shrink: 0;
+        }
+
+        .chat-form input {
+            flex: 1;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 9px 16px;
+            color: var(--text);
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-form input:focus {
+            border-color: var(--accent);
+        }
+
+        .chat-form button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--accent);
+            border: none;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.2s;
+        }
+
+        .chat-form button:hover:not(:disabled) {
+            background: #3a6fbf;
+        }
+
+        .chat-form button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Auth */
+        .auth-area {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .auth-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        .auth-chip i {
+            color: var(--accent);
+        }
+
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+
+        .auth-overlay.open {
+            display: flex;
+        }
+
+        .auth-modal {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            width: 320px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .auth-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .auth-modal input {
+            width: 100%;
+            padding: 9px 12px;
+            margin-bottom: 10px;
+            background: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .auth-modal input:focus {
+            border-color: var(--accent);
+        }
+
+        .auth-error {
+            color: #e06c75;
+            font-size: 12px;
+            min-height: 16px;
+            margin-bottom: 8px;
+        }
+
+        .auth-submit {
+            width: 100%;
+            justify-content: center;
+        }
+
         /* Notification */
         .notification {
             position: fixed;
@@ -517,6 +1148,12 @@
         <button class="trans-btn" onclick="editor.setTransition('zoom')" data-t="zoom">Zoom</button>
         <button class="trans-btn" onclick="editor.setTransition('slide-up')" data-t="slide-up">Up</button>
         <button class="trans-btn" onclick="editor.setTransition('text')" data-t="text">Text</button>
+        <div class="auth-area">
+            <button class="toolbar-btn" id="authLoginBtn" onclick="authUI.openLogin()"><i class="fas fa-sign-in-alt"></i> Login</button>
+            <span class="auth-chip" id="authUserChip" style="display:none;"><i class="fas fa-user-circle"></i> <span id="authUsername"></span></span>
+            <button class="toolbar-btn" id="authAddUserBtn" style="display:none;" onclick="authUI.openAddUser()" title="Add user"><i class="fas fa-user-plus"></i></button>
+            <button class="toolbar-btn" id="authLogoutBtn" style="display:none;" onclick="authUI.logout()" title="Logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
+        </div>
     </div>
 
 
@@ -577,6 +1214,44 @@
 
     <!-- Notification Toast -->
     <div class="notification" id="notification">Ready!</div>
+
+    <!-- Auth Modal -->
+    <div class="auth-overlay" id="authOverlay">
+        <div class="auth-modal">
+            <div class="auth-modal-title" id="authModalTitle"><i class="fas fa-sign-in-alt"></i> Login</div>
+            <form id="authForm" autocomplete="off">
+                <input type="text" id="authUserInput" placeholder="Username" autocomplete="username" required>
+                <input type="password" id="authPassInput" placeholder="Password" autocomplete="current-password" required>
+                <div class="auth-error" id="authError"></div>
+                <button type="submit" class="toolbar-btn auth-submit" id="authSubmitBtn"><span id="authSubmitLabel">Login</span></button>
+            </form>
+        </div>
+    </div>
+
+    <!-- AI Chat -->
+    <button class="chat-fab" id="chatFab" title="AI Assistant (Ctrl+J)"><i class="fas fa-robot"></i></button>
+
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <div class="chat-title"><i class="fas fa-robot"></i> AI Assistant</div>
+            <div class="chat-status">
+                <span class="status-dot" id="chatStatusDot"></span>
+                <span id="chatState">offline</span>
+            </div>
+            <button class="chat-new" id="chatNew" title="New chat (fresh session)"><i class="fas fa-plus"></i></button>
+            <button class="chat-close" id="chatClose" title="Close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="chat-body" id="chatBody">
+            <div class="chat-empty" id="chatEmpty">
+                <i class="fas fa-comment-dots"></i>
+                <div>Start a conversation with the AI assistant</div>
+            </div>
+        </div>
+        <form class="chat-form" id="chatForm" autocomplete="off">
+            <input type="text" id="chatInput" placeholder="Ask something…" />
+            <button type="submit" id="chatSendBtn" disabled><i class="fas fa-paper-plane"></i></button>
+        </form>
+    </div>
 
     <script>
         (function () {
@@ -934,10 +1609,12 @@
                     if (active) {
                         if (document.fullscreenElement) document.exitFullscreen().catch(function () { });
                         presMode.classList.remove('active');
+                        document.body.classList.remove('presenting');
                         document.body.style.overflow = '';
                     } else {
                         if (!this.slides.length) { this.notify('Add slides first!'); return; }
                         presMode.classList.add('active');
+                        document.body.classList.add('presenting');
                         document.body.style.overflow = 'hidden';
                         var elem = document.documentElement;
                         if (elem.requestFullscreen) {
@@ -1400,8 +2077,758 @@
                 if (!document.fullscreenElement) {
                     var pres = document.getElementById('presentationMode');
                     if (pres) pres.classList.remove('active');
+                    document.body.classList.remove('presenting');
                     document.body.style.overflow = '';
                 }
+            });
+        })();
+    </script>
+
+    <script>
+        (function () {
+            'use strict';
+
+            var ws = null;
+            var busy = false;
+            var current = null;
+            var everOpened = false;
+            var chatId = makeChatId();
+
+            function makeChatId() {
+                try {
+                    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+                } catch (e) { }
+                return 'chat-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+            }
+
+            function wsUrl() {
+                return 'ws://127.0.0.1:25575/Html-Presentation-Api/ws?chat_id=' + encodeURIComponent(chatId);
+            }
+
+            var chatPanel = document.getElementById('chatPanel');
+            var chatFab = document.getElementById('chatFab');
+            var chatClose = document.getElementById('chatClose');
+            var chatBody = document.getElementById('chatBody');
+            var chatEmpty = document.getElementById('chatEmpty');
+            var chatForm = document.getElementById('chatForm');
+            var chatInput = document.getElementById('chatInput');
+            var sendBtn = document.getElementById('chatSendBtn');
+            var statusDot = document.getElementById('chatStatusDot');
+            var state = document.getElementById('chatState');
+
+            // ---------- Auth (session cookie against Html-Presentation-Api) ----------
+            var API_BASE = 'http://127.0.0.1:25575/Html-Presentation-Api';
+
+            var authUI = {
+                mode: 'login',
+                user: null,
+
+                init: function () {
+                    try { this.user = localStorage.getItem('hpe_user'); } catch (e) { }
+                    this.refresh();
+                    document.getElementById('authForm').addEventListener('submit', this.submit.bind(this));
+                    document.getElementById('authOverlay').addEventListener('mousedown', function (e) {
+                        if (e.target === e.currentTarget) authUI.close();
+                    });
+                    document.addEventListener('keydown', function (e) {
+                        if (e.key === 'Escape' && document.getElementById('authOverlay').classList.contains('open')) authUI.close();
+                    });
+                },
+
+                refresh: function () {
+                    var loggedIn = !!this.user;
+                    document.getElementById('authLoginBtn').style.display = loggedIn ? 'none' : '';
+                    document.getElementById('authUserChip').style.display = loggedIn ? '' : 'none';
+                    document.getElementById('authAddUserBtn').style.display = loggedIn ? '' : 'none';
+                    document.getElementById('authLogoutBtn').style.display = loggedIn ? '' : 'none';
+                    if (loggedIn) document.getElementById('authUsername').textContent = this.user;
+                },
+
+                openLogin: function () {
+                    this.mode = 'login';
+                    document.getElementById('authModalTitle').innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
+                    document.getElementById('authSubmitLabel').textContent = 'Login';
+                    document.getElementById('authError').textContent = '';
+                    document.getElementById('authForm').reset();
+                    document.getElementById('authOverlay').classList.add('open');
+                    setTimeout(function () { document.getElementById('authUserInput').focus(); }, 50);
+                },
+
+                openAddUser: function () {
+                    this.mode = 'add';
+                    document.getElementById('authModalTitle').innerHTML = '<i class="fas fa-user-plus"></i> Add User';
+                    document.getElementById('authSubmitLabel').textContent = 'Add User';
+                    document.getElementById('authError').textContent = '';
+                    document.getElementById('authForm').reset();
+                    document.getElementById('authOverlay').classList.add('open');
+                    setTimeout(function () { document.getElementById('authUserInput').focus(); }, 50);
+                },
+
+                close: function () {
+                    document.getElementById('authOverlay').classList.remove('open');
+                },
+
+                fail: function (msg) {
+                    document.getElementById('authError').textContent = msg;
+                },
+
+                post: function (path, data) {
+                    return fetch(API_BASE + path, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                },
+
+                submit: function (e) {
+                    e.preventDefault();
+                    var u = document.getElementById('authUserInput').value.trim();
+                    var p = document.getElementById('authPassInput').value;
+                    var self = this;
+                    if (!u || !p) { this.fail('Username and password required'); return; }
+                    if (this.mode === 'add' && p.length < 8) { this.fail('Password must be at least 8 characters'); return; }
+                    this.fail('');
+                    var path = this.mode === 'add' ? '/add_user' : '/login';
+                    this.post(path, { username: u, password: p }).then(function (res) {
+                        if (res.ok) {
+                            if (self.mode === 'login') {
+                                self.user = u;
+                                try { localStorage.setItem('hpe_user', u); } catch (err) { }
+                                self.refresh();
+                                self.close();
+                                if (window.editor && editor.notify) editor.notify('Logged in as ' + u);
+                                if (everOpened && !ws) connect();
+                            } else {
+                                self.close();
+                                if (window.editor && editor.notify) editor.notify('User "' + u + '" created');
+                            }
+                        } else if (res.status === 429) {
+                            self.fail('Too many attempts — wait a minute and try again');
+                        } else if (res.status === 401 || res.status === 403) {
+                            self.fail(self.mode === 'add' ? 'Invalid session — log in again' : 'Invalid username or password');
+                            if (self.mode === 'add') self.markLoggedOut();
+                        } else {
+                            self.fail('Request failed (HTTP ' + res.status + ')');
+                        }
+                    }).catch(function () {
+                        self.fail('Cannot reach auth server at ' + API_BASE);
+                    });
+                },
+
+                logout: function () {
+                    this.post('/logout', {}).catch(function () { });
+                    this.markLoggedOut();
+                    if (window.editor && editor.notify) editor.notify('Logged out');
+                },
+
+                markLoggedOut: function () {
+                    this.user = null;
+                    try { localStorage.removeItem('hpe_user'); } catch (e) { }
+                    this.refresh();
+                    if (ws) {
+                        var old = ws;
+                        ws = null;
+                        old.onclose = null;
+                        old.onerror = null;
+                        try { old.close(); } catch (e) { }
+                    }
+                    statusDot.className = 'status-dot';
+                    state.textContent = 'logged out';
+                    sendBtn.disabled = true;
+                }
+            };
+            window.authUI = authUI;
+            authUI.init();
+            if (!authUI.user) {
+                statusDot.className = 'status-dot';
+                state.textContent = 'login required';
+            }
+
+            function openChat() {
+                chatPanel.classList.add('open');
+                chatFab.classList.add('hidden');
+                everOpened = true;
+                if (!ws) connect();
+                setTimeout(function () { chatInput.focus(); }, 320);
+            }
+
+            function closeChat() {
+                chatPanel.classList.remove('open');
+                chatFab.classList.remove('hidden');
+            }
+
+            function toggleChat() {
+                if (chatPanel.classList.contains('open')) closeChat();
+                else openChat();
+            }
+
+            chatFab.addEventListener('click', openChat);
+            chatClose.addEventListener('click', closeChat);
+
+            var chatNew = document.getElementById('chatNew');
+            if (chatNew) {
+                chatNew.addEventListener('click', function () {
+                    chatId = makeChatId();
+                    slideOps = {};
+                    openSlideKeys = {};
+                    current = null;
+                    setBusy(false);
+                    chatBody.innerHTML = '<div class="chat-empty" id="chatEmpty"><i class="fas fa-comment-dots"></i><div>New session — ask something…</div></div>';
+                    chatEmpty = document.getElementById('chatEmpty');
+                    if (ws) {
+                        var old = ws;
+                        ws = null;
+                        old.onclose = null;
+                        old.onerror = null;
+                        try { old.close(); } catch (e) { }
+                    }
+                    connect();
+                    chatInput.focus();
+                });
+            }
+
+            document.addEventListener('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'j' || e.key === 'J')) {
+                    e.preventDefault();
+                    toggleChat();
+                } else if (e.key === 'Escape' && chatPanel.classList.contains('open')) {
+                    var pres = document.getElementById('presentationMode');
+                    if (!pres || !pres.classList.contains('active')) closeChat();
+                }
+            });
+
+            function connect() {
+                if (!authUI.user) {
+                    statusDot.className = "status-dot";
+                    state.textContent = "login required";
+                    sendBtn.disabled = true;
+                    authUI.openLogin();
+                    return;
+                }
+                try {
+                    ws = new WebSocket(wsUrl());
+                } catch (err) {
+                    state.textContent = "disconnected";
+                    return;
+                }
+
+                ws.onopen = function () {
+                    statusDot.className = "status-dot connected";
+                    state.textContent = "connected";
+                    sendBtn.disabled = busy;
+                    chatInput.focus();
+                };
+
+                ws.onmessage = function (e) {
+                    var ev;
+                    try { ev = JSON.parse(e.data); } catch (err) { return; }
+
+                    if (ev.type === "start") {
+                        slideOps = {};
+                        current = addMsg("bot", "");
+                        current._text = "";
+                        setBusy(true);
+                    } else if (ev.type === "chunk" && current) {
+                        current._text += ev.text;
+                        render(current, current._text);
+                    } else if (ev.type === "done") {
+                        if (current) {
+                            if (!current._text) {
+                                current.classList.add("empty");
+                                render(current, "(no reply)");
+                            } else {
+                                syncSlidesFromText(current._text, true);
+                                render(current, current._text);
+                            }
+                            finish(current);
+                        }
+                        current = null;
+                        setBusy(false);
+                    } else if (ev.type === "error") {
+                        if (current) { render(current, (current._text || "") + "\n[error: " + ev.error + "]"); finish(current); }
+                        current = null;
+                        setBusy(false);
+                    }
+                };
+
+                ws.onclose = function (e) {
+                    statusDot.className = "status-dot";
+                    sendBtn.disabled = true;
+                    if (e && e.code === 1008) {
+                        authUI.markLoggedOut();
+                        state.textContent = "session expired";
+                        authUI.openLogin();
+                        return;
+                    }
+                    state.textContent = "disconnected — reconnecting…";
+                    if (everOpened) setTimeout(connect, 1500);
+                };
+
+                ws.onerror = function () { if (ws) ws.close(); };
+            }
+
+            function addMsg(who, text) {
+                if (chatEmpty) { chatEmpty.remove(); chatEmpty = null; }
+                var el = document.createElement("div");
+                el.className = "msg " + who;
+                el._text = text;
+                render(el, text);
+                chatBody.appendChild(el);
+                chatBody.scrollTop = chatBody.scrollHeight;
+                return el;
+            }
+
+            function escapeHtml(str) {
+                return String(str).replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            }
+
+            var openSlideKeys = {};
+            var slideOps = {};
+
+            var SLIDE_TAG_RE = /<slide\b([^>]*)>([\s\S]*?)(?:<\/slide>|$)/gi;
+            var WEB_SEARCH_RE = /<web_search>([\s\S]*?)(?:<\/web_search>|$)/gi;
+
+            function extractWebSearchTags(text) {
+                var searches = [];
+                var out = String(text).replace(WEB_SEARCH_RE, function (match, query) {
+                    var closed = /<\/web_search>/i.test(match);
+                    var q = query.replace(/^\n+|\n+$/g, '');
+                    searches.push({ query: q, closed: closed, key: 'ws:' + searches.length });
+                    return '%%WEBSEARCH' + (searches.length - 1) + '%%';
+                });
+                return { text: out, searches: searches };
+            }
+
+            function webSearchHtml(s) {
+                var label = s.closed ? 'Searched' : 'Searching';
+                var spin = s.closed
+                    ? '<i class="fas fa-check web-search-icon done"></i>'
+                    : '<i class="fas fa-spinner fa-spin web-search-icon"></i>';
+                return '<div class="web-search-tag' + (openSlideKeys[s.key] ? ' open' : '') + (s.closed ? ' closed' : '') + '" data-key="' + s.key + '">' +
+                    '<div class="web-search-head">' +
+                    spin +
+                    '<span>' + label + ' the web for:</span>' +
+                    '<span class="web-search-query">' + escapeHtml(s.query || '…') + '</span>' +
+                    '<i class="fas fa-chevron-down slide-tag-caret"></i>' +
+                    '</div>' +
+                    '<div class="web-search-results">' +
+                    (s.closed
+                        ? '<div class="ws-empty">Results are handled by the AI — see the reply below.</div>'
+                        : '<div class="ws-empty">Searching…</div>') +
+                    '</div></div>';
+            }
+
+            function extractSlideTags(text) {
+                var slides = [];
+                var out = String(text).replace(SLIDE_TAG_RE, function (match, attrs, body) {
+                    var a = attrs.match(/action\s*=\s*["{']?(\w+)["}']?/i);
+                    var i = attrs.match(/index\s*=\s*["{']?(\d+)["}']?/i);
+                    var action = a ? a[1].toLowerCase() : 'edit';
+                    var index = i ? i[1] : '?';
+                    var closed = /<\/slide>/i.test(match);
+                    var key = action + ':' + index + ':' + slides.length;
+                    slides.push({ action: action, index: index, body: body, closed: closed, key: key });
+                    return '%%SLIDE' + (slides.length - 1) + '%%';
+                });
+                return { text: out, slides: slides };
+            }
+
+            function normalizeAction(a) {
+                return String(a).replace(/(ing|ed|s)$/, '');
+            }
+
+            function formatHtml(src) {
+                if (!src || !src.trim()) return src;
+                var VOID = { meta: 1, link: 1, img: 1, br: 1, hr: 1, input: 1, source: 1, area: 1, base: 1, col: 1, embed: 1, param: 1, track: 1, wbr: 1 };
+                var RAW = { style: 1, script: 1, pre: 1, textarea: 1 };
+                var INLINE = { a: 1, b: 1, strong: 1, em: 1, i: 1, span: 1, code: 1, small: 1, sup: 1, sub: 1, u: 1, s: 1, del: 1, ins: 1, mark: 1, label: 1, font: 1, br: 1, img: 1, input: 1, q: 1, abbr: 1, cite: 1, kbd: 1, var: 1, samp: 1, time: 1, bdi: 1, bdo: 1, wbr: 1, output: 1 };
+                var IND = '    ';
+                var lines = [];
+                var depth = 0;
+                var buf = '';
+                var re = /<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?[a-zA-Z][^>]*>|[^<]+/gi;
+
+                function flush() {
+                    if (buf.trim()) lines.push(IND.repeat(depth) + buf.trim());
+                    buf = '';
+                }
+
+                var m;
+                while ((m = re.exec(src))) {
+                    var t = m[0];
+                    if (/^<!doctype/i.test(t) || /^<!--/.test(t)) {
+                        flush();
+                        lines.push(IND.repeat(depth) + t);
+                        continue;
+                    }
+                    var nameM = t.match(/^<\/?\s*([a-zA-Z0-9-]+)/);
+                    if (nameM) {
+                        var name = nameM[1].toLowerCase();
+                        if (/^<\//.test(t)) {
+                            if (INLINE[name]) { buf += t; continue; }
+                            flush();
+                            depth = Math.max(0, depth - 1);
+                            lines.push(IND.repeat(depth) + t);
+                            continue;
+                        }
+                        if (INLINE[name] && !VOID[name]) {
+                            buf += t;
+                            continue;
+                        }
+                        if (RAW[name]) {
+                            var rest = src.slice(re.lastIndex);
+                            var cm = rest.match(new RegExp('<\\/\\s*' + name + '\\s*>', 'i'));
+                            var raw = cm ? rest.slice(0, cm.index) : rest;
+                            re.lastIndex += raw.length + (cm ? cm[0].length : 0);
+                            flush();
+                            lines.push(IND.repeat(depth) + t);
+                            raw.replace(/^\s*\n|\n\s*$/g, '').split('\n').forEach(function (l) {
+                                lines.push(IND.repeat(depth + 1) + l.replace(/\s+$/, ''));
+                            });
+                            lines.push(IND.repeat(depth) + '</' + name + '>');
+                            continue;
+                        }
+                        flush();
+                        lines.push(IND.repeat(depth) + t);
+                        if (!VOID[name] && !/\/>$/.test(t)) depth++;
+                        continue;
+                    }
+                    buf += t.replace(/\s+/g, ' ');
+                }
+                flush();
+                return lines.join('\n');
+            }
+
+            function syncSlidesFromText(text, finalize) {
+                if (!window.editor) return;
+                var ex = extractSlideTags(text);
+                for (var i = 0; i < ex.slides.length; i++) {
+                    var s = ex.slides[i];
+                    var op = slideOps[s.key];
+                    if (!op) op = slideOps[s.key] = { applied: false, deleted: false };
+                    var closed = s.closed || finalize;
+                    var n = parseInt(s.index, 10);
+                    var pos = isNaN(n) ? editor.slides.length - 1 : n - 1;
+                    if (pos < 0) pos = 0;
+                    var action = normalizeAction(s.action);
+                    var body = s.body.replace(/^\n+|\n+$/g, '');
+
+                    if (action === 'delete') {
+                        if (closed && !op.deleted && editor.slides[pos]) {
+                            op.deleted = true;
+                            editor.slides.splice(pos, 1);
+                            if (!editor.slides.length) editor.currentIndex = -1;
+                            else editor.currentIndex = Math.min(editor.currentIndex, editor.slides.length - 1);
+                            editor.selectSlide(editor.currentIndex);
+                            editor.saveToStorage();
+                        }
+                        continue;
+                    }
+
+                    if (!body && !closed) continue;
+
+                    var applyBody = body;
+                    var isPart = action === 'edit_part' || /<string_replace/i.test(body);
+                    if (isPart) {
+                        if (op.baseHtml === undefined) {
+                            op.baseHtml = editor.slides[pos] ? editor.slides[pos].html : '';
+                        }
+                        var findM = body.match(/<string_replace>([\s\S]*?)<\/\s*<?\s*string_replace\s*>/i);
+                        var replM = body.match(/<to_replace_with>([\s\S]*?)<\/\s*<?\s*to_replace_with\s*>/i);
+                        if (!findM || !replM) continue;
+                        var find = findM[1];
+                        var repl = replM[1];
+                        var at = find.length ? op.baseHtml.indexOf(find) : -1;
+                        applyBody = at === -1 ? op.baseHtml : op.baseHtml.slice(0, at) + repl + op.baseHtml.slice(at + find.length);
+                    }
+
+                    if (!op.applied) {
+                        op.applied = true;
+                        if (action === 'insert') {
+                            while (editor.slides.length < pos) {
+                                editor.slides.push({ id: Date.now() + editor.slides.length, html: editor.defaultTemplate(), transition: editor.transition });
+                            }
+                            editor.slides.splice(pos, 0, { id: Date.now() + pos, html: applyBody || editor.defaultTemplate(), transition: editor.transition });
+                        } else if (pos >= editor.slides.length) {
+                            while (editor.slides.length < pos) {
+                                editor.slides.push({ id: Date.now() + editor.slides.length, html: editor.defaultTemplate(), transition: editor.transition });
+                            }
+                            editor.slides.push({ id: Date.now() + pos, html: applyBody || editor.defaultTemplate(), transition: editor.transition });
+                        } else {
+                            editor.slides[pos].html = applyBody || editor.slides[pos].html;
+                        }
+                        editor.currentIndex = pos;
+                        editor.selectSlide(pos);
+                        clearTimeout(editor.autoApplyTimer);
+                    } else if (editor.slides[pos] && editor.slides[pos].html !== applyBody) {
+                        editor.slides[pos].html = applyBody;
+                        if (editor.currentIndex === pos) {
+                            pushToMonaco(applyBody);
+                            editor.renderPreview();
+                            scheduleThumbRefresh();
+                        }
+                    }
+
+                    if (closed && !op.finalized) {
+                        op.finalized = true;
+                        clearTimeout(editor.autoApplyTimer);
+                        if (editor.slides[pos]) {
+                            var formatted = formatHtml(editor.slides[pos].html);
+                            if (formatted && formatted !== editor.slides[pos].html) {
+                                editor.slides[pos].html = formatted;
+                                if (editor.currentIndex === pos) {
+                                    editor.renderPreview();
+                                }
+                            }
+                            if (editor.currentIndex === pos) {
+                                pushToMonaco(editor.slides[pos].html);
+                                clearTimeout(editor.autoApplyTimer);
+                            }
+                        }
+                        editor.renderThumbnails();
+                        editor.saveToStorage();
+                    }
+                }
+            }
+
+            var thumbTimer = null;
+            function scheduleThumbRefresh() {
+                if (thumbTimer) return;
+                thumbTimer = setTimeout(function () {
+                    thumbTimer = null;
+                    if (window.editor) editor.renderThumbnails();
+                }, 300);
+            }
+
+            function pushToMonaco(html) {
+                if (!window.monacoEditor) return;
+                if (monacoEditor.getValue() === html) return;
+                monacoEditor.setValue(html);
+                clearTimeout(editor.autoApplyTimer);
+                var model = monacoEditor.getModel();
+                if (model) monacoEditor.revealLine(model.getLineCount());
+            }
+
+            function slideTagHtml(s) {
+                var labels = { create: 'Creating', creating: 'Creating', insert: 'Inserting', inserting: 'Inserting', edit: 'Editing', editing: 'Editing', edit_part: 'Editing', delete: 'Deleting', deleted: 'Deleting' };
+                var doneLabels = { create: 'Created', creating: 'Created', insert: 'Inserted', inserting: 'Inserted', edit: 'Edited', editing: 'Edited', edit_part: 'Edited', delete: 'Deleted', deleted: 'Deleted' };
+                var label = (s.closed ? doneLabels : labels)[s.action] || (s.closed ? 'Done' : 'Updated');
+                var body = s.body.replace(/^\n+|\n+$/g, '');
+                var code = body
+                    ? '<pre class="slide-tag-code"><code>' + escapeHtml(body) + '\n</code></pre>'
+                    : '<pre class="slide-tag-code"><code><span style="color:var(--text-dim)">streaming…</span>\n</code></pre>';
+                var spin = s.closed
+                    ? '<i class="fas fa-check slide-tag-icon done"></i>'
+                    : '<i class="fas fa-spinner fa-spin slide-tag-icon"></i>';
+                return '<div class="slide-tag' + (openSlideKeys[s.key] ? ' open' : '') + (s.closed ? ' closed' : '') + '" data-key="' + s.key + '">' +
+                    '<div class="slide-tag-head">' +
+                    spin +
+                    '<span>' + label + ' slide ' + s.index + '</span>' +
+                    '<i class="fas fa-chevron-down slide-tag-caret"></i>' +
+                    '</div>' + code + '</div>';
+            }
+
+            function restoreOpenSlideTags(el) {
+                var tags = el.querySelectorAll('.slide-tag');
+                for (var i = 0; i < tags.length; i++) {
+                    if (openSlideKeys[tags[i].getAttribute('data-key')]) {
+                        tags[i].classList.add('open');
+                    }
+                }
+            }
+
+            chatBody.addEventListener('click', function (e) {
+                var head = e.target.closest ? e.target.closest('.slide-tag-head, .web-search-head') : null;
+                if (!head) return;
+                var tag = head.parentElement;
+                var key = tag.getAttribute('data-key');
+                tag.classList.toggle('open');
+                if (tag.classList.contains('open')) openSlideKeys[key] = true;
+                else delete openSlideKeys[key];
+                chatBody.scrollTop = chatBody.scrollHeight;
+            });
+
+            function inlineMd(s) {
+                return s
+                    .replace(/`([^`]+)`/g, '<code>$1</code>')
+                    .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
+                    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+                    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+                    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+            }
+
+            function mdToHtml(src) {
+                var lines = escapeHtml(src).replace(/\r\n?/g, '\n').split('\n');
+                var out = [];
+                var i = 0;
+
+                function isList(l) { return /^\s*([-*+]|\d+[.)])\s+/.test(l); }
+
+                while (i < lines.length) {
+                    var line = lines[i];
+
+                    if (/^\s*$/.test(line)) { i++; continue; }
+
+                    if (/^```/.test(line)) {
+                        var lang = line.slice(3).trim();
+                        var buf = [];
+                        i++;
+                        while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
+                        i++;
+                        out.push('<pre><code' + (lang ? ' class="lang-' + lang + '"' : '') + '>' + buf.join('\n') + '</code></pre>');
+                        continue;
+                    }
+
+                    var h = line.match(/^(#{1,6})\s+(.*)$/);
+                    if (h) {
+                        var lvl = h[1].length;
+                        out.push('<h' + lvl + '>' + inlineMd(h[2]) + '</h' + lvl + '>');
+                        i++;
+                        continue;
+                    }
+
+                    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
+
+                    if (/^\s*&gt;\s?/.test(line)) {
+                        var q = [];
+                        while (i < lines.length && /^\s*&gt;\s?/.test(lines[i])) {
+                            q.push(lines[i].replace(/^\s*&gt;\s?/, ''));
+                            i++;
+                        }
+                        out.push('<blockquote>' + mdToHtml(q.join('\n')) + '</blockquote>');
+                        continue;
+                    }
+
+                    if (/^\s*\|.+\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+                        var cells = function (l) {
+                            return l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); });
+                        };
+                        var head = cells(line);
+                        i += 2;
+                        var rows = [];
+                        while (i < lines.length && /^\s*\|.+\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
+                        var th = head.map(function (c) { return '<th>' + inlineMd(c) + '</th>'; }).join('');
+                        var tb = rows.map(function (r) {
+                            return '<tr>' + r.map(function (c) { return '<td>' + inlineMd(c) + '</td>'; }).join('') + '</tr>';
+                        }).join('');
+                        out.push('<table><thead><tr>' + th + '</tr></thead><tbody>' + tb + '</tbody></table>');
+                        continue;
+                    }
+
+                    if (isList(line)) {
+                        var ordered = /^\s*\d+[.)]\s+/.test(line);
+                        var items = [];
+                        while (i < lines.length && isList(lines[i])) {
+                            var item = lines[i].replace(/^\s*([-*+]|\d+[.)])\s+/, '');
+                            i++;
+                            while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !isList(lines[i])) {
+                                item += ' ' + lines[i].trim();
+                                i++;
+                            }
+                            var sub = item.match(/^(\[[ xX]\]\s+)([\s\S]*)$/);
+                            if (sub) {
+                                items.push('<li class="task"><input type="checkbox" disabled' +
+                                    (/[xX]/.test(sub[1]) ? ' checked' : '') + '> ' + inlineMd(sub[2]) + '</li>');
+                            } else {
+                                items.push('<li>' + inlineMd(item) + '</li>');
+                            }
+                        }
+                        out.push('<' + (ordered ? 'ol' : 'ul') + '>' + items.join('') + '</' + (ordered ? 'ol' : 'ul') + '>');
+                        continue;
+                    }
+
+                    var para = [line];
+                    i++;
+                    while (i < lines.length && !/^\s*$/.test(lines[i]) &&
+                        !/^```/.test(lines[i]) && !/^(#{1,6})\s+/.test(lines[i]) &&
+                        !isList(lines[i]) && !/^\s*&gt;\s?/.test(lines[i]) &&
+                        !/^\s*\|.+\|\s*$/.test(lines[i]) &&
+                        !/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i])) {
+                        para.push(lines[i]);
+                        i++;
+                    }
+                    out.push('<p>' + inlineMd(para.join('<br>')) + '</p>');
+                }
+
+                return out.join('\n');
+            }
+
+            function render(el, text) {
+                if (el.classList.contains('bot') && !el.classList.contains('empty')) {
+                    var ex = extractSlideTags(text);
+                    var wx = extractWebSearchTags(ex.text);
+                    if (ex.slides.length) syncSlidesFromText(text, false);
+                    var html = mdToHtml(wx.text);
+                    html = html.replace(/<p>\s*(%%(?:SLIDE|WEBSEARCH)\d+%%)\s*<\/p>/g, '$1');
+                    html = html.replace(/%%SLIDE(\d+)%%/g, function (_, n) {
+                        return slideTagHtml(ex.slides[+n]);
+                    });
+                    html = html.replace(/%%WEBSEARCH(\d+)%%/g, function (_, n) {
+                        return webSearchHtml(wx.searches[+n]);
+                    });
+                    el.innerHTML = html;
+                    restoreOpenSlideTags(el);
+                    var codes = el.querySelectorAll('.slide-tag.open .slide-tag-code');
+                    for (var ci = 0; ci < codes.length; ci++) {
+                        codes[ci].scrollTop = codes[ci].scrollHeight;
+                    }
+                } else {
+                    el.textContent = text;
+                }
+                if (!el._done) {
+                    var c = document.createElement("span");
+                    c.className = "cursor";
+                    el.appendChild(c);
+                }
+                chatBody.scrollTop = chatBody.scrollHeight;
+            }
+
+            function finish(el) {
+                el._done = true;
+                var c = el.querySelector(".cursor");
+                if (c) c.remove();
+            }
+
+            function setBusy(b) {
+                busy = b;
+                sendBtn.disabled = b || !ws || ws.readyState !== WebSocket.OPEN;
+            }
+
+            function buildSystemContext() {
+                var idx = (window.editor && editor.currentIndex >= 0) ? editor.currentIndex + 1 : 0;
+                var parts = [];
+                if (window.editor && editor.slides.length) {
+                    for (var i = 0; i < editor.slides.length; i++) {
+                        parts.push('--- Slide ' + (i + 1) + ' ---\n' + editor.slides[i].html);
+                    }
+                }
+                var rules = [
+                    'System: Current slide: ' + idx + ' slide:',
+                    parts.join('\n\n') || '(no slides)',
+                    '',
+                    'You can modify slides by emitting these tags in your reply:',
+                    'Create: <slide action="create" index={slide_number}>{code}</slide>',
+                    'Insert at index (pushes later slides forward): <slide action="insert" index={slide_number}>{code}</slide>',
+                    'Replace whole slide: <slide action="edit" index={slide_number}>{code}</slide>',
+                    'Replace a part (SPACES AND TABS MATTER, exact match): <slide action="edit_part" index={slide_number}><string_replace>{code_to_replace}</string_replace><to_replace_with>{code}</to_replace_with></slide>',
+                    'Delete: <slide action="delete" index={slide_number}></slide>'
+                ];
+                return rules.join('\n');
+            }
+
+            chatForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var text = chatInput.value.trim();
+                if (!text || busy || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+                addMsg("user", text);
+                chatInput.value = "";
+                ws.send(buildSystemContext() + '\n\nUser: ' + text);
             });
         })();
     </script>

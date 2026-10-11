@@ -2175,7 +2175,6 @@
                 post: function (path, data) {
                     return fetch(API_BASE + path, {
                         method: 'POST',
-                        credentials: 'include',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });

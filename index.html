@@ -997,6 +997,64 @@
             color: #6cb6ff;
         }
 
+        .open-url-tag {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 8px 0;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-darker);
+            color: var(--text);
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            max-width: 100%;
+        }
+
+        .open-url-tag:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .open-url-tag .open-url-icon {
+            color: #2ea043;
+            flex-shrink: 0;
+        }
+
+        .open-url-tag:hover .open-url-icon {
+            color: #fff;
+        }
+
+        .open-url-tag .open-url-label {
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .open-url-tag .open-url-addr {
+            color: var(--text-dim);
+            font-weight: 400;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        .open-url-tag:hover .open-url-addr {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .open-url-tag .open-url-external {
+            margin-left: auto;
+            flex-shrink: 0;
+            font-size: 10px;
+            opacity: 0.6;
+        }
+
         .cursor {
             display: inline-block;
             width: 7px;
@@ -2477,6 +2535,39 @@
 
             var SLIDE_TAG_RE = /<slide\b([^>]*)>([\s\S]*?)(?:<\/slide>|$)/gi;
             var WEB_SEARCH_RE = /<web_search>([\s\S]*?)(?:<\/web_search>|$)/gi;
+            var OPEN_URL_RE = /<open_url>([\s\S]*?)(?:<\/open_url>|$)/gi;
+
+            function extractOpenUrlTags(text) {
+                var urls = [];
+                var out = String(text).replace(OPEN_URL_RE, function (match, url) {
+                    var closed = /<\/open_url>/i.test(match);
+                    var u = url.replace(/^\n+|\n+$/g, '');
+                    if (!closed) return match;
+                    urls.push({ url: u, key: 'ou:' + urls.length });
+                    return '%%OPENURL' + (urls.length - 1) + '%%';
+                });
+                return { text: out, urls: urls };
+            }
+
+            function safeHref(u) {
+                var s = String(u || '').trim();
+                if (/^https?:\/\//i.test(s)) return s;
+                return null;
+            }
+
+            function openUrlHtml(s) {
+                var href = safeHref(s.url);
+                if (!href) {
+                    return '<div class="open-url-tag" style="cursor:default;opacity:.6;"><i class="fas fa-triangle-exclamation open-url-icon" style="color:#d29922;"></i><span class="open-url-label">Invalid URL</span><span class="open-url-addr">' + escapeHtml(s.url) + '</span></div>';
+                }
+                var display = href.replace(/^https?:\/\//i, '');
+                return '<a class="open-url-tag" href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer" data-key="' + s.key + '">' +
+                    '<i class="fas fa-arrow-up-right-from-square open-url-icon"></i>' +
+                    '<span class="open-url-label">Open link</span>' +
+                    '<span class="open-url-addr">' + escapeHtml(display) + '</span>' +
+                    '<i class="fas fa-external-link-alt open-url-external"></i>' +
+                    '</a>';
+            }
 
             function extractWebSearchTags(text) {
                 var searches = [];
@@ -2848,14 +2939,18 @@
                 if (el.classList.contains('bot') && !el.classList.contains('empty')) {
                     var ex = extractSlideTags(text);
                     var wx = extractWebSearchTags(ex.text);
+                    var ou = extractOpenUrlTags(wx.text);
                     if (ex.slides.length) syncSlidesFromText(text, false);
-                    var html = mdToHtml(wx.text);
-                    html = html.replace(/<p>\s*(%%(?:SLIDE|WEBSEARCH)\d+%%)\s*<\/p>/g, '$1');
+                    var html = mdToHtml(ou.text);
+                    html = html.replace(/<p>\s*(%%(?:SLIDE|WEBSEARCH|OPENURL)\d+%%)\s*<\/p>/g, '$1');
                     html = html.replace(/%%SLIDE(\d+)%%/g, function (_, n) {
                         return slideTagHtml(ex.slides[+n]);
                     });
                     html = html.replace(/%%WEBSEARCH(\d+)%%/g, function (_, n) {
                         return webSearchHtml(wx.searches[+n]);
+                    });
+                    html = html.replace(/%%OPENURL(\d+)%%/g, function (_, n) {
+                        return openUrlHtml(ou.urls[+n]);
                     });
                     el.innerHTML = html;
                     restoreOpenSlideTags(el);
@@ -2902,7 +2997,8 @@
                     'Insert at index (pushes later slides forward): <slide action="insert" index={slide_number}>{code}</slide>',
                     'Replace whole slide: <slide action="edit" index={slide_number}>{code}</slide>',
                     'Replace a part (SPACES AND TABS MATTER, exact match): <slide action="edit_part" index={slide_number}><string_replace>{code_to_replace}</string_replace><to_replace_with>{code}</to_replace_with></slide>',
-                    'Delete: <slide action="delete" index={slide_number}></slide>'
+                    'Delete: <slide action="delete" index={slide_number}></slide>',
+                    'Link: <open_url>https://example.com</open_url> — renders a clickable "Open link" chip in the chat (use whenever you reference a URL the user should open)'
                 ];
                 return rules.join('\n');
             }

@@ -2102,7 +2102,9 @@
             }
 
             function wsUrl() {
-                return 'https://api.akcore.dev/Html-Presentation-Api/ws?chat_id=' + encodeURIComponent(chatId);
+                var u = 'https://api.akcore.dev/Html-Presentation-Api/ws?chat_id=' + encodeURIComponent(chatId);
+                if (authToken) u += '&token=' + encodeURIComponent(authToken);
+                return u;
             }
 
             var chatPanel = document.getElementById('chatPanel');
@@ -2118,13 +2120,13 @@
 
             // ---------- Auth (session cookie against Html-Presentation-Api) ----------
             var API_BASE = 'https://api.akcore.dev/Html-Presentation-Api';
+            var authToken = null;
 
             var authUI = {
                 mode: 'login',
                 user: null,
 
                 init: function () {
-                    try { this.user = localStorage.getItem('hpe_user'); } catch (e) { }
                     this.refresh();
                     document.getElementById('authForm').addEventListener('submit', this.submit.bind(this));
                     document.getElementById('authOverlay').addEventListener('mousedown', function (e) {
@@ -2192,12 +2194,16 @@
                     this.post(path, { username: u, password: p }).then(function (res) {
                         if (res.ok) {
                             if (self.mode === 'login') {
-                                self.user = u;
-                                try { localStorage.setItem('hpe_user', u); } catch (err) { }
-                                self.refresh();
-                                self.close();
-                                if (window.editor && editor.notify) editor.notify('Logged in as ' + u);
-                                if (everOpened && !ws) connect();
+                                res.json().then(function (data) {
+                                    self.user = data.username || u;
+                                    authToken = data.token || null;
+                                    self.refresh();
+                                    self.close();
+                                    if (window.editor && editor.notify) editor.notify('Logged in as ' + self.user);
+                                    if (everOpened && !ws) connect();
+                                }).catch(function () {
+                                    self.fail('Login succeeded but response was unreadable');
+                                });
                             } else {
                                 self.close();
                                 if (window.editor && editor.notify) editor.notify('User "' + u + '" created');
@@ -2223,7 +2229,7 @@
 
                 markLoggedOut: function () {
                     this.user = null;
-                    try { localStorage.removeItem('hpe_user'); } catch (e) { }
+                    authToken = null;
                     this.refresh();
                     if (ws) {
                         var old = ws;

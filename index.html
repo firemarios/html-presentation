@@ -2102,7 +2102,7 @@
             }
 
             function wsUrl() {
-                return 'ws://127.0.0.1:25575/Html-Presentation-Api/ws?chat_id=' + encodeURIComponent(chatId);
+                return 'https://api.akcore.dev/Html-Presentation-Api/ws?chat_id=' + encodeURIComponent(chatId);
             }
 
             var chatPanel = document.getElementById('chatPanel');
@@ -2117,7 +2117,7 @@
             var state = document.getElementById('chatState');
 
             // ---------- Auth (session cookie against Html-Presentation-Api) ----------
-            var API_BASE = 'http://127.0.0.1:25575/Html-Presentation-Api';
+            var API_BASE = 'https://api.akcore.dev/Html-Presentation-Api';
 
             var authUI = {
                 mode: 'login',

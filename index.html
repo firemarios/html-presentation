@@ -671,6 +671,47 @@
             font-style: italic;
         }
 
+        .msg.thinking {
+            align-self: flex-start;
+            background: transparent;
+            border: none;
+            padding: 4px 13px;
+            color: var(--text-dim);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+        }
+
+        .msg.thinking .think-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            animation: thinkPulse 1.2s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes thinkPulse {
+            0%, 100% { opacity: 0.3; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1); }
+        }
+
+        .msg.thinking .think-time {
+            font-variant-numeric: tabular-nums;
+            opacity: 0.7;
+        }
+
+        .msg.thinking.thought {
+            font-style: italic;
+            opacity: 0.65;
+        }
+
+        .msg.thinking.thought .think-dot,
+        .msg.thinking.thought .think-time {
+            display: none;
+        }
+
         .msg p {
             margin: 0 0 8px;
         }
@@ -2230,6 +2271,7 @@
                 markLoggedOut: function () {
                     this.user = null;
                     authToken = null;
+                    if (typeof removeThinking === 'function') removeThinking();
                     this.refresh();
                     if (ws) {
                         var old = ws;
@@ -2274,6 +2316,7 @@
             var chatNew = document.getElementById('chatNew');
             if (chatNew) {
                 chatNew.addEventListener('click', function () {
+                    removeThinking();
                     chatId = makeChatId();
                     slideOps = {};
                     openSlideKeys = {};
@@ -2335,9 +2378,11 @@
                         current._text = "";
                         setBusy(true);
                     } else if (ev.type === "chunk" && current) {
+                        if (!current._text) settleThinking();
                         current._text += ev.text;
                         render(current, current._text);
                     } else if (ev.type === "done") {
+                        settleThinking();
                         if (current) {
                             if (!current._text) {
                                 current.classList.add("empty");
@@ -2351,6 +2396,7 @@
                         current = null;
                         setBusy(false);
                     } else if (ev.type === "error") {
+                        settleThinking();
                         if (current) { render(current, (current._text || "") + "\n[error: " + ev.error + "]"); finish(current); }
                         current = null;
                         setBusy(false);
@@ -2358,6 +2404,7 @@
                 };
 
                 ws.onclose = function (e) {
+                    removeThinking();
                     statusDot.className = "status-dot";
                     sendBtn.disabled = true;
                     if (e && e.code === 1008) {
@@ -2382,6 +2429,40 @@
                 chatBody.appendChild(el);
                 chatBody.scrollTop = chatBody.scrollHeight;
                 return el;
+            }
+
+            var thinkEl = null;
+            var thinkTimer = null;
+            var thinkStart = 0;
+
+            function showThinking() {
+                removeThinking();
+                thinkStart = Date.now();
+                thinkEl = document.createElement("div");
+                thinkEl.className = "msg thinking";
+                thinkEl.innerHTML = '<span class="think-dot"></span><span>Thinking</span> <span class="think-time">0.0s</span>';
+                chatBody.appendChild(thinkEl);
+                chatBody.scrollTop = chatBody.scrollHeight;
+                thinkTimer = setInterval(function () {
+                    if (!thinkEl) return;
+                    var el = thinkEl.querySelector(".think-time");
+                    if (el) el.textContent = ((Date.now() - thinkStart) / 1000).toFixed(1) + "s";
+                }, 100);
+            }
+
+            function settleThinking() {
+                if (!thinkEl) return;
+                clearInterval(thinkTimer);
+                thinkTimer = null;
+                var secs = ((Date.now() - thinkStart) / 1000).toFixed(1);
+                thinkEl.classList.add("thought");
+                thinkEl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + secs + "s";
+                thinkEl = null;
+            }
+
+            function removeThinking() {
+                if (thinkTimer) { clearInterval(thinkTimer); thinkTimer = null; }
+                if (thinkEl) { thinkEl.remove(); thinkEl = null; }
             }
 
             function escapeHtml(str) {
@@ -2834,6 +2915,7 @@
                 addMsg("user", text);
                 chatInput.value = "";
                 ws.send(buildSystemContext() + '\n\nUser: ' + text);
+                showThinking();
             });
         })();
     </script>

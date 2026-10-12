@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>HTML Slide Editor</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Monaco Editor Loader -->
@@ -26,11 +26,17 @@
             --slide-bg: #0d1117;
         }
 
+        html {
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+        }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: var(--bg-dark);
             color: var(--text);
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -43,10 +49,18 @@
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            padding: 0 20px;
+            padding: 0 max(20px, env(safe-area-inset-right)) 0 max(20px, env(safe-area-inset-left));
             gap: 12px;
             flex-shrink: 0;
             overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+
+        .toolbar::-webkit-scrollbar {
+            height: 0;
+            width: 0;
         }
 
         .toolbar-brand {
@@ -80,11 +94,18 @@
             transition: all 0.2s;
             white-space: nowrap;
             flex-shrink: 0;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .toolbar-btn:hover {
             background: var(--accent);
             border-color: var(--accent);
+        }
+
+        /* Mobile tab bar (hidden on desktop) */
+        .mobile-tabs {
+            display: none;
         }
 
         .trans-btn {
@@ -97,6 +118,8 @@
             font-size: 11px;
             transition: all 0.2s;
             flex-shrink: 0;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .trans-btn:hover,
@@ -112,6 +135,12 @@
             grid-template-columns: 220px 1fr 1fr;
             flex: 1;
             overflow: hidden;
+            min-height: 0;
+        }
+
+        .main-container > * {
+            min-height: 0;
+            min-width: 0;
         }
 
         /* Thumbnails */
@@ -305,6 +334,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
             background: #000;
             z-index: 1000;
             display: none;
@@ -319,6 +349,7 @@
         .pres-wrapper {
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
             position: relative;
             overflow: hidden;
             display: flex;
@@ -363,6 +394,16 @@
 
         .pres-btn:hover {
             background: rgba(255, 255, 255, 0.25);
+        }
+
+        @media (hover: none) {
+            .pres-controls {
+                opacity: 1;
+            }
+
+            .pres-btn:active {
+                background: rgba(255, 255, 255, 0.3);
+            }
         }
 
         .pres-counter {
@@ -473,8 +514,8 @@
         /* AI Chat Panel */
         .chat-fab {
             position: fixed;
-            right: 24px;
-            bottom: 24px;
+            right: max(24px, env(safe-area-inset-right));
+            bottom: calc(24px + env(safe-area-inset-bottom));
             width: 52px;
             height: 52px;
             border-radius: 50%;
@@ -489,6 +530,8 @@
             z-index: 1600;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
             transition: transform 0.2s, background 0.2s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .chat-fab:hover {
@@ -514,7 +557,10 @@
             position: fixed;
             top: 0;
             right: 0;
+            bottom: 0;
+            height: auto;
             height: 100vh;
+            height: 100dvh;
             width: 400px;
             max-width: 100vw;
             background: var(--bg-panel);
@@ -525,6 +571,7 @@
             transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1);
             z-index: 1600;
             box-shadow: -12px 0 40px rgba(0, 0, 0, 0.55);
+            overscroll-behavior: contain;
         }
 
         .chat-panel.open {
@@ -1075,6 +1122,7 @@
             display: flex;
             gap: 8px;
             padding: 12px 14px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom));
             border-top: 1px solid var(--border);
             background: var(--bg-darker);
             flex-shrink: 0;
@@ -1082,6 +1130,7 @@
 
         .chat-form input {
             flex: 1;
+            min-width: 0;
             background: var(--bg-panel);
             border: 1px solid var(--border);
             border-radius: 20px;
@@ -1090,6 +1139,8 @@
             font-size: 13px;
             outline: none;
             transition: border-color 0.2s;
+            -webkit-appearance: none;
+            appearance: none;
         }
 
         .chat-form input:focus {
@@ -1107,6 +1158,8 @@
             cursor: pointer;
             flex-shrink: 0;
             transition: all 0.2s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .chat-form button:hover:not(:disabled) {
@@ -1160,6 +1213,7 @@
             border-radius: 8px;
             padding: 24px;
             width: 320px;
+            max-width: calc(100vw - 32px);
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
         }
 
@@ -1213,10 +1267,227 @@
             transform: translateX(120%);
             transition: transform 0.3s;
             z-index: 2000;
+            pointer-events: none;
+            max-width: calc(100vw - 40px);
         }
 
         .notification.show {
             transform: translateX(0);
+        }
+
+        /* ============ Mobile / responsive ============ */
+        @media (max-width: 900px) {
+
+            /* Tab bar: Code / Preview (only shown on small screens) */
+            .mobile-tabs {
+                display: flex;
+                gap: 6px;
+                padding: 6px 8px;
+                background: var(--bg-darker);
+                border-bottom: 1px solid var(--border);
+                flex-shrink: 0;
+                z-index: 6;
+            }
+
+            .mobile-tabs button {
+                flex: 1;
+                min-height: 40px;
+                background: var(--bg-panel);
+                border: 1px solid var(--border);
+                border-radius: 6px;
+                color: var(--text-dim);
+                font-size: 13px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 7px;
+                cursor: pointer;
+                touch-action: manipulation;
+                -webkit-tap-highlight-color: transparent;
+                transition: all 0.2s;
+            }
+
+            .mobile-tabs button.active {
+                background: var(--accent);
+                border-color: var(--accent);
+                color: #fff;
+            }
+
+            /* Stack the three panels vertically instead of 3 columns */
+            .main-container {
+                display: flex;
+                flex-direction: column;
+                grid-template-columns: none;
+            }
+
+            .editor-panel,
+            .preview-panel {
+                flex: 1;
+                min-height: 0;
+                border-right: none;
+            }
+
+            body[data-view="code"] .preview-panel {
+                display: none;
+            }
+
+            body[data-view="preview"] .editor-panel {
+                display: none;
+            }
+
+            /* Slide strip on top */
+            .thumbnails-panel {
+                flex: 0 0 auto;
+                flex-direction: row;
+                align-items: center;
+                height: 96px;
+                padding: 8px;
+                gap: 8px;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .thumbnails-panel::-webkit-scrollbar {
+                height: 0;
+                width: 0;
+            }
+
+            .thumb {
+                width: 128px;
+                height: 72px;
+                flex: 0 0 auto;
+            }
+
+            .add-btn {
+                flex: 0 0 auto;
+                min-width: 96px;
+                align-self: stretch;
+            }
+
+            .no-slides {
+                padding: 0 12px;
+                white-space: nowrap;
+            }
+
+            .no-slides i {
+                display: inline-block;
+                margin: 0 8px 0 0;
+                font-size: 18px;
+            }
+
+            .panel-header {
+                height: 34px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .toolbar {
+                height: 46px;
+                padding: 0 max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
+                gap: 8px;
+            }
+
+            .toolbar-brand {
+                display: none;
+            }
+
+            .toolbar-divider {
+                display: none;
+            }
+
+            .toolbar-btn {
+                padding: 7px 11px;
+                font-size: 12px;
+            }
+
+            /* Chat panel takes the whole screen */
+            .chat-panel {
+                width: 100vw;
+                border-left: none;
+                box-shadow: none;
+            }
+
+            .chat-header {
+                padding: 0 8px 0 12px;
+                padding-top: env(safe-area-inset-top);
+                height: auto;
+                min-height: 50px;
+                gap: 6px;
+            }
+
+            .chat-title {
+                font-size: 12px;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .chat-new {
+                margin-left: 4px;
+            }
+
+            .chat-body {
+                padding: 14px 12px;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .msg {
+                max-width: 92%;
+            }
+
+            /* 16px stops iOS Safari from zooming the page when the field is focused */
+            .chat-form {
+                padding: 10px 10px;
+                padding-bottom: calc(10px + env(safe-area-inset-bottom));
+                gap: 8px;
+            }
+
+            .chat-form input {
+                font-size: 16px;
+                padding: 10px 14px;
+            }
+
+            .auth-modal input {
+                font-size: 16px;
+            }
+
+            .notification {
+                right: 10px;
+                left: 10px;
+                top: auto;
+                bottom: calc(88px + env(safe-area-inset-bottom));
+                text-align: center;
+                transform: translateY(calc(200% + 100px));
+            }
+
+            .notification.show {
+                transform: translateY(0);
+            }
+
+            .pres-counter {
+                right: 16px;
+                bottom: calc(76px + env(safe-area-inset-bottom));
+            }
+
+            .pres-controls {
+                bottom: calc(16px + env(safe-area-inset-bottom));
+            }
+        }
+
+        @media (max-width: 380px) {
+            .mobile-tabs button {
+                font-size: 12px;
+                gap: 5px;
+            }
+
+            .toolbar-btn {
+                padding: 7px 9px;
+            }
         }
     </style>
 </head>
@@ -1253,6 +1524,12 @@
             <button class="toolbar-btn" id="authAddUserBtn" style="display:none;" onclick="authUI.openAddUser()" title="Add user"><i class="fas fa-user-plus"></i></button>
             <button class="toolbar-btn" id="authLogoutBtn" style="display:none;" onclick="authUI.logout()" title="Logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
         </div>
+    </div>
+
+    <!-- Mobile tab bar (visible only on small screens) -->
+    <div class="mobile-tabs" id="mobileTabs">
+        <button type="button" data-view="preview"><i class="fas fa-eye"></i> Preview</button>
+        <button type="button" data-view="code"><i class="fas fa-code"></i> Code</button>
     </div>
 
 
@@ -1347,8 +1624,10 @@
             </div>
         </div>
         <form class="chat-form" id="chatForm" autocomplete="off">
-            <input type="text" id="chatInput" placeholder="Ask something…" />
-            <button type="submit" id="chatSendBtn" disabled><i class="fas fa-paper-plane"></i></button>
+            <input type="text" id="chatInput" placeholder="Ask something…" enterkeyhint="send"
+                autocapitalize="sentences" autocomplete="off" autocorrect="on" />
+            <button type="submit" id="chatSendBtn" disabled aria-label="Send message"><i
+                    class="fas fa-paper-plane"></i></button>
         </form>
     </div>
 
@@ -3013,6 +3292,95 @@
                 ws.send(buildSystemContext() + '\n\nUser: ' + text);
                 showThinking();
             });
+        })();
+    </script>
+
+    <script>
+        (function () {
+            'use strict';
+
+            /* ---------- Mobile tab bar: Preview / Code ---------- */
+            var tabs = document.getElementById('mobileTabs');
+            if (tabs) {
+                var tabButtons = tabs.querySelectorAll('button');
+
+                var setView = function (v) {
+                    document.body.setAttribute('data-view', v);
+                    for (var i = 0; i < tabButtons.length; i++) {
+                        var b = tabButtons[i];
+                        if (b.getAttribute('data-view') === v) b.classList.add('active');
+                        else b.classList.remove('active');
+                    }
+                    if (v === 'preview') {
+                        requestAnimationFrame(function () {
+                            requestAnimationFrame(function () {
+                                if (window.editor) window.editor.scalePreview();
+                            });
+                        });
+                    } else if (v === 'code' && window.monacoEditor) {
+                        setTimeout(function () {
+                            try { window.monacoEditor.layout(); } catch (e) { }
+                        }, 0);
+                    }
+                };
+
+                tabs.addEventListener('click', function (e) {
+                    var t = e.target;
+                    while (t && t !== tabs && !(t.getAttribute && t.getAttribute('data-view'))) t = t.parentNode;
+                    if (t && t !== tabs && t.getAttribute && t.getAttribute('data-view')) {
+                        setView(t.getAttribute('data-view'));
+                    }
+                });
+
+                var isSmall = window.matchMedia ? window.matchMedia('(max-width: 900px)').matches : (window.innerWidth <= 900);
+                setView(isSmall ? 'preview' : 'code');
+            }
+
+            /* ---------- Keep the chat panel (and its input) inside the visible viewport ---------- */
+            var chatPanel = document.getElementById('chatPanel');
+            var chatInput = document.getElementById('chatInput');
+            var chatBodyEl = document.getElementById('chatBody');
+            var vv = window.visualViewport;
+
+            if (chatPanel) {
+                var syncChatViewport = function () {
+                    if (!chatPanel.classList.contains('open') || !vv) {
+                        chatPanel.style.height = '';
+                        chatPanel.style.top = '';
+                        return;
+                    }
+                    chatPanel.style.height = Math.round(vv.height) + 'px';
+                    chatPanel.style.top = Math.round(vv.offsetTop) + 'px';
+                };
+
+                if (vv) {
+                    vv.addEventListener('resize', syncChatViewport);
+                    vv.addEventListener('scroll', syncChatViewport);
+                }
+                window.addEventListener('resize', syncChatViewport);
+                window.addEventListener('orientationchange', function () {
+                    setTimeout(syncChatViewport, 250);
+                });
+
+                if (window.MutationObserver) {
+                    new MutationObserver(syncChatViewport).observe(chatPanel, {
+                        attributes: true,
+                        attributeFilter: ['class']
+                    });
+                }
+
+                if (chatInput) {
+                    chatInput.addEventListener('focus', function () {
+                        setTimeout(function () {
+                            syncChatViewport();
+                            if (chatBodyEl) chatBodyEl.scrollTop = chatBodyEl.scrollHeight;
+                        }, 250);
+                    });
+                    chatInput.addEventListener('blur', function () {
+                        setTimeout(syncChatViewport, 100);
+                    });
+                }
+            }
         })();
     </script>
 </body>

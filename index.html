@@ -759,6 +759,31 @@
             display: none;
         }
 
+        .msg-reasoning {
+            font-size: 12px;
+            line-height: 1.45;
+            color: var(--text-dim);
+            font-style: italic;
+            margin: 0 0 8px;
+            padding: 6px 10px;
+            border-left: 3px solid var(--border);
+            background: rgba(127, 127, 127, 0.07);
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .msg-reasoning .reasoning-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 3px;
+            opacity: 0.85;
+        }
+
+        .msg-reasoning .reasoning-label i {
+            margin-right: 4px;
+        }
+
         .msg p {
             margin: 0 0 8px;
         }
@@ -2714,6 +2739,8 @@
                         current = addMsg("bot", "");
                         current._text = "";
                         setBusy(true);
+                    } else if (ev.type === "reasoning" && current) {
+                        appendReasoning(current, ev.text);
                     } else if (ev.type === "chunk" && current) {
                         if (!current._text) settleThinking();
                         current._text += ev.text;
@@ -2788,6 +2815,7 @@
             }
 
             function settleThinking() {
+                if (current) finalizeReasoning(current);
                 if (!thinkEl) return;
                 clearInterval(thinkTimer);
                 thinkTimer = null;
@@ -2798,8 +2826,40 @@
             }
 
             function removeThinking() {
+                if (current) finalizeReasoning(current);
                 if (thinkTimer) { clearInterval(thinkTimer); thinkTimer = null; }
                 if (thinkEl) { thinkEl.remove(); thinkEl = null; }
+            }
+
+            function ensureReasoning(el) {
+                if (!el._reasonEl) {
+                    removeThinking();
+                    var r = document.createElement("div");
+                    r.className = "msg-reasoning";
+                    r.innerHTML = '<span class="reasoning-label"><i class="fas fa-brain"></i> Thinking\u2026 <span class="reasoning-time">0.0s</span></span><span class="reasoning-body"></span>';
+                    el.insertBefore(r, el.firstChild);
+                    el._reasonEl = r;
+                    el._reasonBody = r.querySelector(".reasoning-body");
+                    el._reasonStart = Date.now();
+                    el._reasonTimer = setInterval(function () {
+                        var t = r.querySelector(".reasoning-time");
+                        if (t) t.textContent = ((Date.now() - el._reasonStart) / 1000).toFixed(1) + "s";
+                    }, 100);
+                }
+                return el._reasonBody;
+            }
+
+            function finalizeReasoning(el) {
+                if (!el || !el._reasonEl) return;
+                if (el._reasonTimer) { clearInterval(el._reasonTimer); el._reasonTimer = null; }
+                var lbl = el._reasonEl.querySelector(".reasoning-label");
+                if (lbl) lbl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + ((Date.now() - el._reasonStart) / 1000).toFixed(1) + "s";
+            }
+
+            function appendReasoning(el, text) {
+                var body = ensureReasoning(el);
+                body.textContent += text;
+                chatBody.scrollTop = chatBody.scrollHeight;
             }
 
             function escapeHtml(str) {
@@ -3215,6 +3275,7 @@
             }
 
             function render(el, text) {
+                var keepReason = el._reasonEl || null;
                 if (el.classList.contains('bot') && !el.classList.contains('empty')) {
                     var ex = extractSlideTags(text);
                     var wx = extractWebSearchTags(ex.text);
@@ -3239,6 +3300,9 @@
                     }
                 } else {
                     el.textContent = text;
+                }
+                if (keepReason && keepReason.parentNode !== el) {
+                    el.insertBefore(keepReason, el.firstChild);
                 }
                 if (!el._done) {
                     var c = document.createElement("span");
@@ -3269,15 +3333,7 @@
                 }
                 var rules = [
                     'System: Current slide: ' + idx + ' slide:',
-                    parts.join('\n\n') || '(no slides)',
-                    '',
-                    'You can modify slides by emitting these tags in your reply:',
-                    'Create: <slide action="create" index={slide_number}>{code}</slide>',
-                    'Insert at index (pushes later slides forward): <slide action="insert" index={slide_number}>{code}</slide>',
-                    'Replace whole slide: <slide action="edit" index={slide_number}>{code}</slide>',
-                    'Replace a part (SPACES AND TABS MATTER, exact match): <slide action="edit_part" index={slide_number}><string_replace>{code_to_replace}</string_replace><to_replace_with>{code}</to_replace_with></slide>',
-                    'Delete: <slide action="delete" index={slide_number}></slide>',
-                    'Link: <open_url>https://example.com</open_url> — renders a clickable "Open link" chip in the chat (use whenever you reference a URL the user should open)'
+                    parts.join('\n\n') || '(no slides)'
                 ];
                 return rules.join('\n');
             }

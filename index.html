@@ -2863,6 +2863,7 @@
                     if (t) t.textContent = ((Date.now() - block.start) / 1000).toFixed(1) + "s";
                 }, 100);
                 if (!el._reasonBlocks) el._reasonBlocks = [];
+                block.idx = el._reasonBlocks.length;
                 el._reasonBlocks.push(block);
                 el._reasonActive = block;
                 placeReasoning(el);
@@ -2888,9 +2889,35 @@
                 if (!el || !el._reasonActive) return;
                 var b = el._reasonActive;
                 el._reasonActive = null;
+                if (b.frozen) return;
+                b.frozen = true;
                 if (b.timer) { clearInterval(b.timer); b.timer = null; }
                 var lbl = b.el.querySelector(".reasoning-label");
                 if (lbl) lbl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + ((Date.now() - b.start) / 1000).toFixed(1) + "s";
+                // Freeze: bake an immutable marker into the text at the exact offset
+                // where thinking stopped. The block's position becomes part of the
+                // text itself, so later chunks / slide widgets can never render above it.
+                if (typeof el._text === "string") {
+                    var token = "\n%%REASON" + b.idx + "%%\n";
+                    var before = el._text.slice(0, b.at);
+                    var p = b.at;
+                    // If thinking stopped inside a still-open slide tag, anchor before
+                    // the tag so the marker never lands in the widget body.
+                    var opens = (before.match(/<slide\b/gi) || []).length;
+                    var closes = (before.match(/<\/slide>/gi) || []).length;
+                    if (opens > closes) {
+                        var s = before.toLowerCase().lastIndexOf("<slide");
+                        if (s !== -1) p = s;
+                    }
+                    if (p < 0) p = 0;
+                    var others = el._reasonBlocks || [];
+                    for (var i = 0; i < others.length; i++) {
+                        var o = others[i];
+                        if (o !== b && !o.frozen && o.at >= p) o.at += token.length;
+                    }
+                    el._text = el._text.slice(0, p) + token + el._text.slice(p);
+                    b.at = p;
+                }
             }
 
             function finalizeReasoning(el) {
@@ -3333,9 +3360,14 @@
                 var blocks = el._reasonBlocks || [];
                 var renderText = text;
                 if (blocks.length && el.classList.contains('bot') && !el.classList.contains('empty')) {
-                    var order = blocks.map(function (b, i) { return { at: b.at, i: i }; })
-                        .sort(function (a, b) { return a.at - b.at; });
-                    for (var k = order.length - 1; k >= 0; k--) {
+                    // Frozen blocks already have their marker baked into the text;
+                    // only the still-active block gets injected at its offset.
+                    var order = [];
+                    for (var bi2 = 0; bi2 < blocks.length; bi2++) {
+                        if (!blocks[bi2].frozen) order.push({ at: blocks[bi2].at, i: bi2 });
+                    }
+                    order.sort(function (a, b) { return b.at - a.at; });
+                    for (var k = 0; k < order.length; k++) {
                         var p = Math.max(0, Math.min(order[k].at, renderText.length));
                         renderText = renderText.slice(0, p) + "\n%%REASON" + order[k].i + "%%\n" + renderText.slice(p);
                     }

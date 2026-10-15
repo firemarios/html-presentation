@@ -776,25 +776,49 @@
             font-size: 12px;
             line-height: 1.45;
             color: var(--text-dim);
-            font-style: italic;
             margin: 6px 0 8px;
-            padding: 6px 10px;
-            border-left: 3px solid var(--border);
+            padding: 0;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             background: rgba(127, 127, 127, 0.07);
-            border-radius: 4px;
-            white-space: pre-wrap;
-            word-break: break-word;
+            overflow: hidden;
+        }
+
+        .msg-reasoning .reasoning-head {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
         }
 
         .msg-reasoning .reasoning-label {
-            display: block;
             font-weight: 600;
-            margin-bottom: 3px;
             opacity: 0.85;
         }
 
-        .msg-reasoning .reasoning-label i {
-            margin-right: 4px;
+        .msg-reasoning .reasoning-caret {
+            margin-left: auto;
+            transition: transform 0.2s;
+            opacity: 0.6;
+        }
+
+        .msg-reasoning.open .reasoning-caret {
+            transform: rotate(180deg);
+        }
+
+        .msg-reasoning:not(.open) .reasoning-body {
+            display: none;
+        }
+
+        .msg-reasoning .reasoning-body {
+            display: block;
+            padding: 0 10px 8px;
+            font-style: italic;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
 
         .msg p {
@@ -1556,6 +1580,8 @@
         <button class="trans-btn" onclick="editor.setTransition('zoom')" data-t="zoom">Zoom</button>
         <button class="trans-btn" onclick="editor.setTransition('slide-up')" data-t="slide-up">Up</button>
         <button class="trans-btn" onclick="editor.setTransition('text')" data-t="text">Text</button>
+        <button class="trans-btn" onclick="editor.setTransition('none')" data-t="none"
+            title="Custom transitions — the slide builds its own out/in animation via SlideAPI">None</button>
         <div class="auth-area">
             <button class="toolbar-btn" id="authLoginBtn" onclick="authUI.openLogin()"><i class="fas fa-sign-in-alt"></i> Login</button>
             <span class="auth-chip" id="authUserChip" style="display:none;"><i class="fas fa-user-circle"></i> <span id="authUsername"></span></span>
@@ -1673,11 +1699,87 @@
         (function () {
             'use strict';
 
+            // SlideAPI bridge — injected into the presentation iframe before the
+            // slide's own scripts. Lets slide code (AI-authored) build custom
+            // out/in transitions with transition="none", navigate, and register
+            // keybinds. Slide code calls SlideAPI.outDone() when its out
+            // animation ends; the host then performs the actual slide switch.
+            var SLIDE_BRIDGE_SRC = [
+                '(function () {',
+                '    if (window.SlideAPI) return;',
+                '    var outH = [], inH = [], keyH = [], binds = {}, pressNextH = [], pressPrevH = [];',
+                '    function hostRef() { try { return window.parent && window.parent.editor; } catch (e) { return null; } }',
+                '    function combo(e) {',
+                '        var p = [];',
+                '        if (e.ctrlKey || e.metaKey) p.push("ctrl");',
+                '        if (e.altKey) p.push("alt");',
+                '        if (e.shiftKey) p.push("shift");',
+                '        p.push(String(e.key || "").toLowerCase());',
+                '        return p.join("+");',
+                '    }',
+                '    window.SlideAPI = {',
+                '        meta: null,',
+                '        onSlideOut: function (fn) { if (typeof fn === "function") outH.push(fn); return window.SlideAPI; },',
+                '        onSlideIn: function (fn) { if (typeof fn === "function") inH.push(fn); return window.SlideAPI; },',
+                '        onKey: function (fn) { if (typeof fn === "function") keyH.push(fn); return window.SlideAPI; },',
+                '        addKeybind: function (keys, fn) { if (typeof keys === "string") keys = [keys]; for (var i = 0; i < keys.length; i++) binds[String(keys[i]).toLowerCase()] = fn; return window.SlideAPI; },',
+                '        removeKeybind: function (keys) { if (typeof keys === "string") keys = [keys]; for (var i = 0; i < keys.length; i++) delete binds[String(keys[i]).toLowerCase()]; return window.SlideAPI; },',
+                '        NavigateForward: function () { var h = hostRef(); if (h) h.gotoDir(1, true); },',
+                '        NavigateBackwards: function () { var h = hostRef(); if (h) h.gotoDir(-1, true); },',
+                '        OnNextSlidePress: function (fn) { if (typeof fn === "function") pressNextH.push(fn); return window.SlideAPI; },',
+                '        OnPreviousSlidePress: function (fn) { if (typeof fn === "function") pressPrevH.push(fn); return window.SlideAPI; },',
+                '        next: function () { window.SlideAPI.NavigateForward(); },',
+                '        prev: function () { window.SlideAPI.NavigateBackwards(); },',
+                '        goto: function (i) { var h = hostRef(); if (h) h.gotoSlide(i); },',
+                '        current: function () { var h = hostRef(); return h ? h.currentIndex : -1; },',
+                '        total: function () { var h = hostRef(); return h ? h.slides.length : 0; },',
+                '        outDone: function () { var h = hostRef(); if (h) h.__outDone(); },',
+                '        __requestOut: function (dir) {',
+                '            if (!outH.length) return false;',
+                '            for (var i = 0; i < outH.length; i++) { try { outH[i](dir); } catch (e) { console.error(e); } }',
+                '            return true;',
+                '        },',
+                '        __press: function (dir) {',
+                '            var list = dir > 0 ? pressNextH : pressPrevH;',
+                '            for (var i = 0; i < list.length; i++) { try { list[i](dir); } catch (e) { console.error(e); } }',
+                '        },',
+                '        __fireIn: function (idx, total) {',
+                '            window.SlideAPI.meta = { index: idx, total: total };',
+                '            var run = function () { for (var i = 0; i < inH.length; i++) { try { inH[i](idx, total); } catch (e) { console.error(e); } } };',
+                '            if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);',
+                '            else setTimeout(run, 0);',
+                '        },',
+                '        __dispatchKey: function (key, e) {',
+                '            var handled = false, k = String(key || "").toLowerCase(), c = combo(e);',
+                '            var fn = binds[c] || binds[k];',
+                '            if (typeof fn === "function") { try { fn(k, e); } catch (err) { console.error(err); } handled = true; }',
+                '            for (var i = 0; i < keyH.length; i++) { try { if (keyH[i](k, e) === true) handled = true; } catch (err) { console.error(err); } }',
+                '            return handled;',
+                '        }',
+                '    };',
+                // Keys also work when focus is inside the iframe (e.g. after a
+                // click on slide content): dispatch locally, else forward to host.
+                '    document.addEventListener("keydown", function (e) {',
+                '        if (window.SlideAPI.__dispatchKey(e.key, e)) { e.preventDefault(); return; }',
+                '        var h = hostRef();',
+                '        if (!h) return;',
+                '        var k = String(e.key || "");',
+                '        if (k === "ArrowRight" || k === "ArrowDown" || k === " " || k === "PageDown") { e.preventDefault(); h.nextSlide(); }',
+                '        else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp") { e.preventDefault(); h.prevSlide(); }',
+                '        else if (k === "Escape") { e.preventDefault(); h.togglePresentation(); }',
+                '    });',
+                '})();'
+            ].join('\n');
+            var SLIDE_BRIDGE_TAG = '<script>' + SLIDE_BRIDGE_SRC + '<\/script>';
+
             var editor = {
                 slides: [],
                 currentIndex: -1,
                 transition: 'slide-right',
                 autoApplyTimer: null,
+                outPending: false,
+                outTimer: null,
+                outTarget: null,
 
                 addSlide: function () {
                     this.slides.push({ id: Date.now(), html: this.defaultTemplate(), transition: this.transition });
@@ -2023,6 +2125,8 @@
                     if (!presMode) return;
                     var active = presMode.classList.contains('active');
                     if (active) {
+                        this.outPending = false;
+                        clearTimeout(this.outTimer);
                         if (document.fullscreenElement) document.exitFullscreen().catch(function () { });
                         presMode.classList.remove('active');
                         document.body.classList.remove('presenting');
@@ -2055,15 +2159,35 @@
                     presContent.className = 'slide-content';
                     void presContent.offsetWidth;
                     var trans = slide.transition || this.transition;
-                    presContent.classList.add('anim-' + trans);
+                    if (trans !== 'none') presContent.classList.add('anim-' + trans);
 
-                    // Write HTML to iframe
+                    // Write HTML to iframe; the SlideAPI bridge is injected
+                    // before the slide's own scripts so custom transitions,
+                    // navigation, and keybinds are available immediately.
                     var doc = presContent.contentDocument;
+                    var html = slide.html;
+                    var hi = html.search(/<head[^>]*>/i);
+                    if (hi !== -1) {
+                        var he = html.indexOf('>', hi) + 1;
+                        html = html.slice(0, he) + '\n' + SLIDE_BRIDGE_TAG + html.slice(he);
+                    } else {
+                        html = SLIDE_BRIDGE_TAG + '\n' + html;
+                    }
                     doc.open();
-                    doc.write(slide.html);
+                    doc.write(html);
                     doc.close();
 
                     var self = this;
+
+                    // transition "none": the slide owns its entrance animation
+                    if (trans === 'none') {
+                        var iw = presContent.contentWindow;
+                        if (iw && iw.SlideAPI && typeof iw.SlideAPI.__fireIn === 'function') {
+                            var fireIn = function () { iw.SlideAPI.__fireIn(idx, self.slides.length); };
+                            if (doc.readyState === 'complete') setTimeout(fireIn, 0);
+                            else doc.addEventListener('DOMContentLoaded', fireIn);
+                        }
+                    }
 
                     requestAnimationFrame(function () {
                         requestAnimationFrame(function () {
@@ -2142,16 +2266,75 @@
                 },
 
                 nextSlide: function () {
-                    if (this.currentIndex < this.slides.length - 1) {
-                        this.currentIndex++;
-                        this.showPresentationSlide(this.currentIndex);
-                    }
+                    this.gotoDir(1);
                 },
 
                 prevSlide: function () {
-                    if (this.currentIndex > 0) {
-                        this.currentIndex--;
-                        this.showPresentationSlide(this.currentIndex);
+                    this.gotoDir(-1);
+                },
+
+                gotoSlide: function (i) {
+                    i = parseInt(i, 10);
+                    if (isNaN(i) || i < 0 || i >= this.slides.length) return;
+                    this.outPending = false;
+                    clearTimeout(this.outTimer);
+                    this.currentIndex = i;
+                    this.showPresentationSlide(i);
+                },
+
+                // Central navigation. transition "none": nav buttons and
+                // keypresses never navigate automatically - they only fire the
+                // slide's OnNextSlidePress/OnPreviousSlidePress handlers
+                // (viaApi = false). Actual movement must be requested by the
+                // slide itself with SlideAPI.NavigateForward/Backwards
+                // (viaApi = true), which then runs the custom out-transition
+                // flow: __requestOut -> slide's outro -> SlideAPI.outDone()
+                // -> switch. A 6s safety timer prevents a stuck animation
+                // from blocking navigation.
+                gotoDir: function (dir, viaApi) {
+                    if (this.outPending) return;
+                    var cur = this.currentIndex >= 0 ? this.slides[this.currentIndex] : null;
+                    var curTrans = cur ? (cur.transition || this.transition) : null;
+                    var presContent = document.getElementById('presContent');
+                    var win = presContent && presContent.contentWindow;
+
+                    if (curTrans === 'none' && win && win.SlideAPI && !viaApi) {
+                        if (typeof win.SlideAPI.__press === 'function') {
+                            try { win.SlideAPI.__press(dir); } catch (e) { }
+                        }
+                        return;
+                    }
+
+                    var target = this.currentIndex + dir;
+                    if (target < 0 || target >= this.slides.length) return;
+
+                    if (curTrans === 'none' && win && win.SlideAPI && typeof win.SlideAPI.__requestOut === 'function') {
+                        var started = false;
+                        try { started = win.SlideAPI.__requestOut(dir); } catch (e) { started = false; }
+                        if (started) {
+                            this.outPending = true;
+                            this.outTarget = target;
+                            var self = this;
+                            clearTimeout(this.outTimer);
+                            this.outTimer = setTimeout(function () { self.__outDone(); }, 6000);
+                            return;
+                        }
+                    }
+                    this.currentIndex = target;
+                    this.showPresentationSlide(target);
+                },
+
+                // Called by the slide (via SlideAPI.outDone) when its out
+                // transition ends — performs the actual slide switch.
+                __outDone: function () {
+                    if (!this.outPending) return;
+                    clearTimeout(this.outTimer);
+                    this.outPending = false;
+                    var t = this.outTarget;
+                    this.outTarget = null;
+                    if (typeof t === 'number' && t >= 0 && t < this.slides.length) {
+                        this.currentIndex = t;
+                        this.showPresentationSlide(t);
                     }
                 },
 
@@ -2250,7 +2433,7 @@
                         '                                }',
                         '                            }',
                         '                            walk(container);',
-                        '                        } else {',
+                        '                        } else if (trans !== "none") {',
                         '                            slide.classList.remove("anim-" + trans);',
                         '                            void slide.offsetWidth;',
                         '                            slide.classList.add("anim-" + trans);',
@@ -2426,6 +2609,15 @@
             document.addEventListener('keydown', function (e) {
                 var pres = document.getElementById('presentationMode');
                 if (pres && pres.classList.contains('active')) {
+                    // Give the current slide first crack at every key so slide
+                    // code can register its own keybinds (SlideAPI.addKeybind/onKey)
+                    var pc = document.getElementById('presContent');
+                    var iw = pc && pc.contentWindow;
+                    if (iw && iw.SlideAPI && typeof iw.SlideAPI.__dispatchKey === 'function') {
+                        var handled = false;
+                        try { handled = iw.SlideAPI.__dispatchKey(e.key, e); } catch (err) { }
+                        if (handled) { e.preventDefault(); return; }
+                    }
                     if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
                         e.preventDefault(); editor.nextSlide();
                     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
@@ -2495,6 +2687,8 @@
                     if (pres) pres.classList.remove('active');
                     document.body.classList.remove('presenting');
                     document.body.style.overflow = '';
+                    editor.outPending = false;
+                    clearTimeout(editor.outTimer);
                 }
             });
         })();
@@ -2855,8 +3049,8 @@
             function startReasoningBlock(el, at) {
                 removeThinking();
                 var r = document.createElement("div");
-                r.className = "msg-reasoning";
-                r.innerHTML = '<span class="reasoning-label"><i class="fas fa-brain"></i> Thinking\u2026 <span class="reasoning-time">0.0s</span></span><span class="reasoning-body"></span>';
+                r.className = "msg-reasoning open";
+                r.innerHTML = '<div class="reasoning-head"><i class="fas fa-brain reasoning-icon"></i><span class="reasoning-label">Thinking\u2026 <span class="reasoning-time">0.0s</span></span><i class="fas fa-chevron-down reasoning-caret"></i></div><span class="reasoning-body"></span>';
                 var block = { at: at, el: r, body: r.querySelector(".reasoning-body"), start: Date.now(), timer: null };
                 block.timer = setInterval(function () {
                     var t = r.querySelector(".reasoning-time");
@@ -2877,6 +3071,14 @@
             }
 
             function appendReasoning(el, text) {
+                // Stale-replay guard: the gateway sometimes re-delivers reasoning
+                // fragments already shown in this message. Dropping them prevents
+                // phantom blocks being created at the current end (below content).
+                var known = el._reasonBlocks || [];
+                for (var i = 0; i < known.length; i++) {
+                    var prev = known[i].body.textContent || "";
+                    if (text.length >= 6 && prev.indexOf(text) !== -1) return;
+                }
                 var at = (el._text || "").length;
                 if (!el._reasonActive || el._reasonActive.at !== at) {
                     startReasoningBlock(el, at);
@@ -2893,7 +3095,8 @@
                 b.frozen = true;
                 if (b.timer) { clearInterval(b.timer); b.timer = null; }
                 var lbl = b.el.querySelector(".reasoning-label");
-                if (lbl) lbl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + ((Date.now() - b.start) / 1000).toFixed(1) + "s";
+                if (lbl) lbl.textContent = "Thought for " + ((Date.now() - b.start) / 1000).toFixed(1) + "s";
+                b.el.classList.remove("open"); // condense into the collapsed widget
                 // Freeze: bake an immutable marker into the text at the exact offset
                 // where thinking stopped. The block's position becomes part of the
                 // text itself, so later chunks / slide widgets can never render above it.
@@ -2953,6 +3156,7 @@
 
             var openSlideKeys = {};
             var slideOps = {};
+            var VALID_TRANSITIONS = ['none', 'slide-right', 'slide-left', 'fade', 'zoom', 'slide-up', 'text'];
 
             var SLIDE_TAG_RE = /<slide\b([^>]*)>([\s\S]*?)(?:<\/slide>|$)/gi;
             var WEB_SEARCH_RE = /<web_search>([\s\S]*?)(?:<\/web_search>|$)/gi;
@@ -3025,11 +3229,12 @@
                 var out = String(text).replace(SLIDE_TAG_RE, function (match, attrs, body) {
                     var a = attrs.match(/action\s*=\s*["{']?(\w+)["}']?/i);
                     var i = attrs.match(/index\s*=\s*["{']?(\d+)["}']?/i);
+                    var tr = attrs.match(/transition\s*=\s*["{']?([\w-]+)["}']?/i);
                     var action = a ? a[1].toLowerCase() : 'edit';
                     var index = i ? i[1] : '?';
                     var closed = /<\/slide>/i.test(match);
                     var key = action + ':' + index + ':' + slides.length;
-                    slides.push({ action: action, index: index, body: body, closed: closed, key: key });
+                    slides.push({ action: action, index: index, transition: tr ? tr[1].toLowerCase() : null, body: body, closed: closed, key: key });
                     return '%%SLIDE' + (slides.length - 1) + '%%';
                 });
                 return { text: out, slides: slides };
@@ -3171,6 +3376,13 @@
                         }
                     }
 
+                    // Slide tags may carry transition="name" (e.g. "none" for a
+                    // custom SlideAPI-driven transition)
+                    if (s.transition && VALID_TRANSITIONS.indexOf(s.transition) !== -1 &&
+                        editor.slides[pos] && editor.slides[pos].transition !== s.transition) {
+                        editor.slides[pos].transition = s.transition;
+                    }
+
                     if (closed && !op.finalized) {
                         op.finalized = true;
                         clearTimeout(editor.autoApplyTimer);
@@ -3240,13 +3452,15 @@
             }
 
             chatBody.addEventListener('click', function (e) {
-                var head = e.target.closest ? e.target.closest('.slide-tag-head, .web-search-head') : null;
+                var head = e.target.closest ? e.target.closest('.slide-tag-head, .web-search-head, .reasoning-head') : null;
                 if (!head) return;
                 var tag = head.parentElement;
                 var key = tag.getAttribute('data-key');
                 tag.classList.toggle('open');
-                if (tag.classList.contains('open')) openSlideKeys[key] = true;
-                else delete openSlideKeys[key];
+                if (key) {
+                    if (tag.classList.contains('open')) openSlideKeys[key] = true;
+                    else delete openSlideKeys[key];
+                }
                 chatBody.scrollTop = chatBody.scrollHeight;
             });
 

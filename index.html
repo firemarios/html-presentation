@@ -770,7 +770,6 @@
             display: flex;
             align-items: center;
             gap: 7px;
-            animation: thinkPulse 1.2s ease-in-out infinite;
         }
 
         .msg-reasoning {
@@ -778,7 +777,7 @@
             line-height: 1.45;
             color: var(--text-dim);
             font-style: italic;
-            margin: 0 0 8px;
+            margin: 6px 0 8px;
             padding: 6px 10px;
             border-left: 3px solid var(--border);
             background: rgba(127, 127, 127, 0.07);
@@ -2755,9 +2754,12 @@
                         current._text = "";
                         setBusy(true);
                     } else if (ev.type === "reasoning" && current) {
+                        clearRetry();
                         appendReasoning(current, ev.text);
                     } else if (ev.type === "chunk" && current) {
-                        if (!current._text) { settleThinking(); clearRetry(); }
+                        clearRetry();
+                        if (!current._text) settleThinking();
+                        finalizeActiveReasoning(current);
                         current._text += ev.text;
                         render(current, current._text);
                     } else if (ev.type === "done") {
@@ -2850,29 +2852,53 @@
                 if (thinkEl) { thinkEl.remove(); thinkEl = null; }
             }
 
-            function ensureReasoning(el) {
-                if (!el._reasonEl) {
-                    removeThinking();
-                    var r = document.createElement("div");
-                    r.className = "msg-reasoning";
-                    r.innerHTML = '<span class="reasoning-label"><i class="fas fa-brain"></i> Thinking\u2026 <span class="reasoning-time">0.0s</span></span><span class="reasoning-body"></span>';
-                    el.insertBefore(r, el.firstChild);
-                    el._reasonEl = r;
-                    el._reasonBody = r.querySelector(".reasoning-body");
-                    el._reasonStart = Date.now();
-                    el._reasonTimer = setInterval(function () {
-                        var t = r.querySelector(".reasoning-time");
-                        if (t) t.textContent = ((Date.now() - el._reasonStart) / 1000).toFixed(1) + "s";
-                    }, 100);
+            function startReasoningBlock(el, at) {
+                removeThinking();
+                var r = document.createElement("div");
+                r.className = "msg-reasoning";
+                r.innerHTML = '<span class="reasoning-label"><i class="fas fa-brain"></i> Thinking\u2026 <span class="reasoning-time">0.0s</span></span><span class="reasoning-body"></span>';
+                var block = { at: at, el: r, body: r.querySelector(".reasoning-body"), start: Date.now(), timer: null };
+                block.timer = setInterval(function () {
+                    var t = r.querySelector(".reasoning-time");
+                    if (t) t.textContent = ((Date.now() - block.start) / 1000).toFixed(1) + "s";
+                }, 100);
+                if (!el._reasonBlocks) el._reasonBlocks = [];
+                el._reasonBlocks.push(block);
+                el._reasonActive = block;
+                placeReasoning(el);
+            }
+
+            function placeReasoning(el) {
+                var blocks = el._reasonBlocks || [];
+                for (var i = 0; i < blocks.length; i++) {
+                    if (blocks[i].el.parentNode !== el) el.appendChild(blocks[i].el);
                 }
-                return el._reasonBody;
+            }
+
+            function appendReasoning(el, text) {
+                var at = (el._text || "").length;
+                if (!el._reasonActive || el._reasonActive.at !== at) {
+                    startReasoningBlock(el, at);
+                }
+                el._reasonActive.body.textContent += text;
+                chatBody.scrollTop = chatBody.scrollHeight;
+            }
+
+            function finalizeActiveReasoning(el) {
+                if (!el || !el._reasonActive) return;
+                var b = el._reasonActive;
+                el._reasonActive = null;
+                if (b.timer) { clearInterval(b.timer); b.timer = null; }
+                var lbl = b.el.querySelector(".reasoning-label");
+                if (lbl) lbl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + ((Date.now() - b.start) / 1000).toFixed(1) + "s";
             }
 
             function finalizeReasoning(el) {
-                if (!el || !el._reasonEl) return;
-                if (el._reasonTimer) { clearInterval(el._reasonTimer); el._reasonTimer = null; }
-                var lbl = el._reasonEl.querySelector(".reasoning-label");
-                if (lbl) lbl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + ((Date.now() - el._reasonStart) / 1000).toFixed(1) + "s";
+                if (!el || !el._reasonBlocks) return;
+                for (var i = 0; i < el._reasonBlocks.length; i++) {
+                    el._reasonActive = el._reasonBlocks[i];
+                    finalizeActiveReasoning(el);
+                }
             }
 
             var retryEl = null;
@@ -2889,12 +2915,6 @@
 
             function clearRetry() {
                 if (retryEl) { retryEl.remove(); retryEl = null; }
-            }
-
-            function appendReasoning(el, text) {
-                var body = ensureReasoning(el);
-                body.textContent += text;
-                chatBody.scrollTop = chatBody.scrollHeight;
             }
 
             function escapeHtml(str) {
@@ -3310,14 +3330,25 @@
             }
 
             function render(el, text) {
-                var keepReason = el._reasonEl || null;
+                var blocks = el._reasonBlocks || [];
+                var renderText = text;
+                if (blocks.length && el.classList.contains('bot') && !el.classList.contains('empty')) {
+                    var order = blocks.map(function (b, i) { return { at: b.at, i: i }; })
+                        .sort(function (a, b) { return a.at - b.at; });
+                    for (var k = order.length - 1; k >= 0; k--) {
+                        var p = Math.max(0, Math.min(order[k].at, renderText.length));
+                        renderText = renderText.slice(0, p) + "\n%%REASON" + order[k].i + "%%\n" + renderText.slice(p);
+                    }
+                }
                 if (el.classList.contains('bot') && !el.classList.contains('empty')) {
-                    var ex = extractSlideTags(text);
+                    var ex = extractSlideTags(renderText);
                     var wx = extractWebSearchTags(ex.text);
                     var ou = extractOpenUrlTags(wx.text);
                     if (ex.slides.length) syncSlidesFromText(text, false);
                     var html = mdToHtml(ou.text);
                     html = html.replace(/<p>\s*(%%(?:SLIDE|WEBSEARCH|OPENURL)\d+%%)\s*<\/p>/g, '$1');
+                    html = html.replace(/<p>\s*%%REASON(\d+)%%\s*<\/p>/g, '<span class="reason-anchor" data-b="$1"></span>');
+                    html = html.replace(/%%REASON(\d+)%%/g, '<span class="reason-anchor" data-b="$1"></span>');
                     html = html.replace(/%%SLIDE(\d+)%%/g, function (_, n) {
                         return slideTagHtml(ex.slides[+n]);
                     });
@@ -3329,6 +3360,11 @@
                     });
                     el.innerHTML = html;
                     restoreOpenSlideTags(el);
+                    var anchors = el.querySelectorAll(".reason-anchor");
+                    for (var ai = 0; ai < anchors.length; ai++) {
+                        var bi = parseInt(anchors[ai].getAttribute("data-b"), 10);
+                        if (blocks[bi]) anchors[ai].parentNode.replaceChild(blocks[bi].el, anchors[ai]);
+                    }
                     var codes = el.querySelectorAll('.slide-tag.open .slide-tag-code');
                     for (var ci = 0; ci < codes.length; ci++) {
                         codes[ci].scrollTop = codes[ci].scrollHeight;
@@ -3336,9 +3372,7 @@
                 } else {
                     el.textContent = text;
                 }
-                if (keepReason && keepReason.parentNode !== el) {
-                    el.insertBefore(keepReason, el.firstChild);
-                }
+                placeReasoning(el);
                 if (!el._done) {
                     var c = document.createElement("span");
                     c.className = "cursor";

@@ -759,6 +759,20 @@
             display: none;
         }
 
+        .msg.retry {
+            align-self: flex-start;
+            background: rgba(220, 38, 38, 0.08);
+            border: 1px solid #dc2626;
+            color: #dc2626;
+            font-size: 12px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            animation: thinkPulse 1.2s ease-in-out infinite;
+        }
+
         .msg-reasoning {
             font-size: 12px;
             line-height: 1.45;
@@ -2736,17 +2750,19 @@
 
                     if (ev.type === "start") {
                         slideOps = {};
+                        clearRetry();
                         current = addMsg("bot", "");
                         current._text = "";
                         setBusy(true);
                     } else if (ev.type === "reasoning" && current) {
                         appendReasoning(current, ev.text);
                     } else if (ev.type === "chunk" && current) {
-                        if (!current._text) settleThinking();
+                        if (!current._text) { settleThinking(); clearRetry(); }
                         current._text += ev.text;
                         render(current, current._text);
                     } else if (ev.type === "done") {
                         settleThinking();
+                        clearRetry();
                         if (current) {
                             if (!current._text) {
                                 current.classList.add("empty");
@@ -2761,9 +2777,12 @@
                         setBusy(false);
                     } else if (ev.type === "error") {
                         settleThinking();
+                        clearRetry();
                         if (current) { render(current, (current._text || "") + "\n[error: " + ev.error + "]"); finish(current); }
                         current = null;
                         setBusy(false);
+                    } else if (ev.type === "retry") {
+                        showRetry(ev.text || "API overloaded \u2014 retrying\u2026");
                     }
                 };
 
@@ -2854,6 +2873,22 @@
                 if (el._reasonTimer) { clearInterval(el._reasonTimer); el._reasonTimer = null; }
                 var lbl = el._reasonEl.querySelector(".reasoning-label");
                 if (lbl) lbl.innerHTML = '<i class="fas fa-brain"></i> Thought for ' + ((Date.now() - el._reasonStart) / 1000).toFixed(1) + "s";
+            }
+
+            var retryEl = null;
+
+            function showRetry(text) {
+                if (!retryEl) {
+                    retryEl = document.createElement("div");
+                    retryEl.className = "msg retry";
+                    chatBody.appendChild(retryEl);
+                }
+                retryEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> ' + escapeHtml(text);
+                chatBody.scrollTop = chatBody.scrollHeight;
+            }
+
+            function clearRetry() {
+                if (retryEl) { retryEl.remove(); retryEl = null; }
             }
 
             function appendReasoning(el, text) {

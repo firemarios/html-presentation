@@ -585,7 +585,6 @@
                 min-height: 0;
                 padding: 0;
                 gap: 0;
-                height: 100%;
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
@@ -1501,6 +1500,17 @@ function updateAside() {
             window.addEventListener('orientationchange', function () {
                 setTimeout(refit, 300);
             });
+
+            /* ================= viewport height fix (old iOS) ================= */
+            function fixViewportHeight() {
+                var main = document.querySelector('main');
+                var header = document.querySelector('header');
+                if (main) main.style.height = (window.innerHeight - (header ? header.offsetHeight : 0)) + 'px';
+            }
+            fixViewportHeight();
+            window.addEventListener('load', fixViewportHeight);
+            window.addEventListener('resize', fixViewportHeight);
+            window.addEventListener('orientationchange', function () { setTimeout(fixViewportHeight, 300); });
 
             /* ================= boot ================= */
             renderHeader();

@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <title>HTML Slide Editor</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <!-- Monaco Editor Loader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
     <style>
@@ -101,6 +102,63 @@
         .toolbar-btn:hover {
             background: var(--accent);
             border-color: var(--accent);
+        }
+
+        /* Local controller indicator — only shown when server.py serves this
+           page (click to copy the controller URL for your phone/tablet). */
+        .lan-chip {
+            display: none;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-dim);
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 5px 10px;
+            border-radius: 4px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        .lan-chip:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        .lan-chip .lan-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            flex-shrink: 0;
+        }
+
+        .lan-chip.connecting .lan-dot {
+            background: #d29922;
+            animation: lanPulse 1.2s ease-in-out infinite;
+        }
+
+        .lan-chip.online .lan-dot {
+            background: #2ea043;
+            box-shadow: 0 0 6px rgba(46, 160, 67, .8);
+        }
+
+        .lan-chip.offline .lan-dot {
+            background: #dc2626;
+        }
+
+        @keyframes lanPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .4;
+            }
         }
 
         /* Mobile tab bar (hidden on desktop) */
@@ -344,6 +402,17 @@
 
         .presentation-mode.active {
             display: flex;
+        }
+
+        /* Background crossfade cover for slide swaps with transition "none"
+           (replaces the white flash while the iframe document is replaced) */
+        #presBgFade {
+            position: absolute;
+            inset: 0;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            background: transparent;
         }
 
         .pres-wrapper {
@@ -1582,7 +1651,11 @@
         <button class="trans-btn" onclick="editor.setTransition('text')" data-t="text">Text</button>
         <button class="trans-btn" onclick="editor.setTransition('none')" data-t="none"
             title="Custom transitions — the slide builds its own out/in animation via SlideAPI">None</button>
+        <span class="lan-chip" id="lanChip"
+            title="Local controller — click to copy the link for your phone/tablet"><span
+                class="lan-dot"></span><span id="lanChipText">LAN</span></span>
         <div class="auth-area">
+            <button class="toolbar-btn" id="connectControllerBtn" onclick="pairUI.connect()"><i class="fas fa-qrcode"></i> Connect Controller</button>
             <button class="toolbar-btn" id="authLoginBtn" onclick="authUI.openLogin()"><i class="fas fa-sign-in-alt"></i> Login</button>
             <span class="auth-chip" id="authUserChip" style="display:none;"><i class="fas fa-user-circle"></i> <span id="authUsername"></span></span>
             <button class="toolbar-btn" id="authAddUserBtn" style="display:none;" onclick="authUI.openAddUser()" title="Add user"><i class="fas fa-user-plus"></i></button>
@@ -1668,7 +1741,19 @@
         </div>
     </div>
 
-    <!-- AI Chat -->
+    <!-- Pair / Connect Controller Modal -->
+    <div class="auth-overlay" id="pairOverlay">
+        <div class="auth-modal" style="width:360px;text-align:center;">
+            <div class="auth-modal-title" style="justify-content:center;"><i class="fas fa-qrcode"></i> Connect Controller</div>
+            <div id="pairQr" style="margin:12px auto;display:inline-block;"></div>
+            <div style="margin-top:10px;font-size:12px;color:var(--text-dim);">Scan the QR code, or open the controller URL with:</div>
+            <div id="pairCode" style="font-family:monospace;font-size:13px;word-break:break-all;margin:8px 0 4px;color:#fff;"></div>
+            <div id="pairShortCode" style="font-family:monospace;font-size:18px;font-weight:700;letter-spacing:4px;margin:4px 0 6px;color:#fff;"></div>
+            <div id="pairCountdown" style="font-size:11px;color:var(--text-dim);margin-bottom:12px;"></div>
+            <button type="button" class="toolbar-btn auth-submit" onclick="pairUI.close()">Close</button>
+        </div>
+    </div>
+
     <button class="chat-fab" id="chatFab" title="AI Assistant (Ctrl+J)"><i class="fas fa-robot"></i></button>
 
     <div class="chat-panel" id="chatPanel">
@@ -1707,8 +1792,18 @@
             var SLIDE_BRIDGE_SRC = [
                 '(function () {',
                 '    if (window.SlideAPI) return;',
-                '    var outH = [], inH = [], keyH = [], binds = {}, pressNextH = [], pressPrevH = [];',
+                '    var outH = [], inH = [], keyH = [], binds = {}, pressNextH = [], pressPrevH = [], evtH = [], dataH = [];',
                 '    function hostRef() { try { return window.parent && window.parent.editor; } catch (e) { return null; } }',
+                // MODE: "present" (presentation iframe) | "preview" (editor preview)
+                // | "thumb" (thumbnail iframes — publish is a no-op so thumbnail
+                // scripts can never flood the controller with stale data).
+                '    var MODE = window.__SLIDE_MODE__ || "present";',
+                '    function hostPres() { var h = hostRef(); return !!(h && typeof h.isPresActive === "function" && h.isPresActive()); }',
+                // Navigation is only allowed from the live presentation iframe
+                // while presentation mode is on. Preview / thumbnail /
+                // controller frames get the same bridge (so SlideAPI exists)
+                // but can never move the real deck.
+                '    function navOk() { return MODE === "present" && hostPres(); }',
                 '    function combo(e) {',
                 '        var p = [];',
                 '        if (e.ctrlKey || e.metaKey) p.push("ctrl");',
@@ -1722,15 +1817,18 @@
                 '        onSlideOut: function (fn) { if (typeof fn === "function") outH.push(fn); return window.SlideAPI; },',
                 '        onSlideIn: function (fn) { if (typeof fn === "function") inH.push(fn); return window.SlideAPI; },',
                 '        onKey: function (fn) { if (typeof fn === "function") keyH.push(fn); return window.SlideAPI; },',
+                '        onEvent: function (fn) { if (typeof fn === "function") evtH.push(fn); return window.SlideAPI; },',
+                '        onData: function (fn) { if (typeof fn === "function") dataH.push(fn); return window.SlideAPI; },',
+                '        publish: function (data) { if (MODE === "thumb") return window.SlideAPI; var h = hostRef(); if (h && h.__publish) h.__publish(data, MODE); return window.SlideAPI; },',
                 '        addKeybind: function (keys, fn) { if (typeof keys === "string") keys = [keys]; for (var i = 0; i < keys.length; i++) binds[String(keys[i]).toLowerCase()] = fn; return window.SlideAPI; },',
                 '        removeKeybind: function (keys) { if (typeof keys === "string") keys = [keys]; for (var i = 0; i < keys.length; i++) delete binds[String(keys[i]).toLowerCase()]; return window.SlideAPI; },',
-                '        NavigateForward: function () { var h = hostRef(); if (h) h.gotoDir(1, true); },',
-                '        NavigateBackwards: function () { var h = hostRef(); if (h) h.gotoDir(-1, true); },',
+                '        NavigateForward: function () { if (!navOk()) return; var h = hostRef(); h.gotoDir(1, true); },',
+                '        NavigateBackwards: function () { if (!navOk()) return; var h = hostRef(); h.gotoDir(-1, true); },',
                 '        OnNextSlidePress: function (fn) { if (typeof fn === "function") pressNextH.push(fn); return window.SlideAPI; },',
                 '        OnPreviousSlidePress: function (fn) { if (typeof fn === "function") pressPrevH.push(fn); return window.SlideAPI; },',
                 '        next: function () { window.SlideAPI.NavigateForward(); },',
                 '        prev: function () { window.SlideAPI.NavigateBackwards(); },',
-                '        goto: function (i) { var h = hostRef(); if (h) h.gotoSlide(i); },',
+                '        goto: function (i) { if (!navOk()) return; var h = hostRef(); h.gotoSlide(i); },',
                 '        current: function () { var h = hostRef(); return h ? h.currentIndex : -1; },',
                 '        total: function () { var h = hostRef(); return h ? h.slides.length : 0; },',
                 '        outDone: function () { var h = hostRef(); if (h) h.__outDone(); },',
@@ -1749,6 +1847,12 @@
                 '            if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", run);',
                 '            else setTimeout(run, 0);',
                 '        },',
+                '        __fireEvent: function (name, payload) {',
+                '            for (var i = 0; i < evtH.length; i++) { try { evtH[i](name, payload); } catch (e) { console.error(e); } }',
+                '        },',
+                '        __receiveData: function (data) {',
+                '            for (var i = 0; i < dataH.length; i++) { try { dataH[i](data); } catch (e) { console.error(e); } }',
+                '        },',
                 '        __dispatchKey: function (key, e) {',
                 '            var handled = false, k = String(key || "").toLowerCase(), c = combo(e);',
                 '            var fn = binds[c] || binds[k];',
@@ -1761,6 +1865,7 @@
                 // click on slide content): dispatch locally, else forward to host.
                 '    document.addEventListener("keydown", function (e) {',
                 '        if (window.SlideAPI.__dispatchKey(e.key, e)) { e.preventDefault(); return; }',
+                '        if (MODE !== "present" || !hostPres()) return;',
                 '        var h = hostRef();',
                 '        if (!h) return;',
                 '        var k = String(e.key || "");',
@@ -1771,6 +1876,58 @@
                 '})();'
             ].join('\n');
             var SLIDE_BRIDGE_TAG = '<script>' + SLIDE_BRIDGE_SRC + '<\/script>';
+            // Mode-tagged bridge variants. window.__SLIDE_MODE__ tells the
+            // bridge where it is running: "present" (live presentation),
+            // "preview" (editor preview pane), "thumb" (thumbnail iframes),
+            // "controller" (slide mirror inside controller.html). Anything
+            // but "present" can never navigate the deck or publish data.
+            var SLIDE_BRIDGE_TAGS = { present: SLIDE_BRIDGE_TAG };
+            function bridgeTag(mode) {
+                if (!mode || mode === 'present') return SLIDE_BRIDGE_TAG;
+                if (!SLIDE_BRIDGE_TAGS[mode]) {
+                    SLIDE_BRIDGE_TAGS[mode] = '<script>window.__SLIDE_MODE__="' + mode + '";<\/script>' + SLIDE_BRIDGE_TAG;
+                }
+                return SLIDE_BRIDGE_TAGS[mode];
+            }
+            // Inject the bridge right after <head> (or on top when there is
+            // none) so slide scripts always find SlideAPI defined.
+            function injectBridge(html, mode) {
+                html = String(html || '');
+                var tag = bridgeTag(mode);
+                var hi = html.search(/<head[^>]*>/i);
+                if (hi !== -1) {
+                    var he = html.indexOf('>', hi) + 1;
+                    return html.slice(0, he) + '\n' + tag + html.slice(he);
+                }
+                return tag + '\n' + html;
+            }
+
+            // Effective background of a rendered slide document:
+            // .slide-container first (the full-bleed visible surface), then
+            // body, then html. Returns null when everything is transparent.
+            function slideBodyBg(doc) {
+                try {
+                    var w = doc && doc.defaultView;
+                    if (!w) return null;
+                    var pick = function (el) {
+                        if (!el) return '';
+                        var c = w.getComputedStyle(el).backgroundColor;
+                        return (c && c !== 'transparent' && c !== 'rgba(0, 0, 0, 0)') ? c : '';
+                    };
+                    return pick(doc.querySelector('.slide-container')) || pick(doc.body) || pick(doc.documentElement) || null;
+                } catch (e) { return null; }
+            }
+
+            function getPresFadeEl() {
+                var ov = document.getElementById('presBgFade');
+                if (!ov) {
+                    ov = document.createElement('div');
+                    ov.id = 'presBgFade';
+                    var host = document.getElementById('presentationMode') || document.body;
+                    host.appendChild(ov);
+                }
+                return ov;
+            }
 
             var editor = {
                 slides: [],
@@ -1826,6 +1983,8 @@
                         this.renderPreview();
                     }
                     this.renderThumbnails();
+                    this.__lan('deck');
+                    this.__lan('state');
                 },
 
                 applyChanges: function () {
@@ -1988,10 +2147,24 @@
 
                     if (previewEl.contentDocument) {
                         var doc = previewEl.contentDocument;
+                        var trans = this.slides[this.currentIndex].transition || this.transition;
 
                         doc.open();
-                        doc.write(html);
+                        doc.write(injectBridge(html, 'preview'));
                         doc.close();
+
+                        // Mirror presentation mode: "none" slides build their
+                        // entrance through SlideAPI.onSlideIn, so the preview
+                        // must fire it too or the slide stays hidden.
+                        if (trans === 'none') {
+                            var iw = previewEl.contentWindow;
+                            if (iw && iw.SlideAPI && typeof iw.SlideAPI.__fireIn === 'function') {
+                                var pIdx = this.currentIndex, pTotal = this.slides.length;
+                                var fireIn = function () { try { iw.SlideAPI.__fireIn(pIdx, pTotal); } catch (e) { } };
+                                if (doc.readyState === 'complete') setTimeout(fireIn, 0);
+                                else doc.addEventListener('DOMContentLoaded', fireIn);
+                            }
+                        }
 
                         // Some browsers don't reliably fire iframe.onload
                         // when using document.write().
@@ -2091,7 +2264,7 @@
                                 var html = self.slides[j].html;
                                 var doc = iframe.contentDocument;
                                 doc.open();
-                                doc.write(html);
+                                doc.write(injectBridge(html, 'thumb'));
                                 doc.close();
 
                                 // Calculate dynamic scale based on thumbnail size
@@ -2131,6 +2304,8 @@
                         presMode.classList.remove('active');
                         document.body.classList.remove('presenting');
                         document.body.style.overflow = '';
+                        this.__lan('data', { kind: 'clear' });
+                        this.__lan('state');
                     } else {
                         if (!this.slides.length) { this.notify('Add slides first!'); return; }
                         presMode.classList.add('active');
@@ -2152,30 +2327,52 @@
 
                 showPresentationSlide: function (idx) {
                     if (idx < 0 || idx >= this.slides.length) return;
+                    // Live data belongs to one slide only: wipe the previous
+                    // slide's published values before the new one loads.
+                    this.__lan('data', { kind: 'clear' });
                     var slide = this.slides[idx];
                     var presContent = document.getElementById('presContent');
                     var presCounter = document.getElementById('presCounter');
                     if (!presContent) return;
+                    var trans = slide.transition || this.transition;
+
+                    // Capture the outgoing slide's background BEFORE the iframe
+                    // document is replaced, so none-transition swaps never flash
+                    // white: the swap is covered with the old color, then
+                    // crossfaded to the new background over 0.2s.
+                    var oldIdx = this._lastShownIndex;
+                    var oldSlide = (oldIdx != null && oldIdx !== idx && this.slides[oldIdx]) ? this.slides[oldIdx] : null;
+                    var oldTrans = oldSlide ? (oldSlide.transition || this.transition) : null;
+                    var oldBg = (oldSlide && (oldTrans === 'none' || trans === 'none')) ? slideBodyBg(presContent.contentDocument) : null;
+
                     presContent.className = 'slide-content';
                     void presContent.offsetWidth;
-                    var trans = slide.transition || this.transition;
                     if (trans !== 'none') presContent.classList.add('anim-' + trans);
 
                     // Write HTML to iframe; the SlideAPI bridge is injected
                     // before the slide's own scripts so custom transitions,
                     // navigation, and keybinds are available immediately.
                     var doc = presContent.contentDocument;
-                    var html = slide.html;
-                    var hi = html.search(/<head[^>]*>/i);
-                    if (hi !== -1) {
-                        var he = html.indexOf('>', hi) + 1;
-                        html = html.slice(0, he) + '\n' + SLIDE_BRIDGE_TAG + html.slice(he);
-                    } else {
-                        html = SLIDE_BRIDGE_TAG + '\n' + html;
-                    }
+                    var html = injectBridge(slide.html, 'present');
                     doc.open();
                     doc.write(html);
                     doc.close();
+
+                    // Background crossfade: an opaque old-color cover hides the
+                    // cleared document (no white flash), then transitions to the
+                    // new slide's background in 0.2s while fading out.
+                    if (oldBg) {
+                        var newBg = slideBodyBg(doc) || oldBg;
+                        var ov = getPresFadeEl();
+                        ov.style.transition = 'none';
+                        ov.style.backgroundColor = oldBg;
+                        ov.style.opacity = '1';
+                        void ov.offsetWidth;
+                        ov.style.transition = 'background-color 0.2s ease, opacity 0.2s ease';
+                        ov.style.backgroundColor = newBg;
+                        ov.style.opacity = '0';
+                    }
+                    this._lastShownIndex = idx;
 
                     var self = this;
 
@@ -2226,6 +2423,7 @@
 
                     if (presCounter) presCounter.textContent = (idx + 1) + ' / ' + this.slides.length;
                     requestAnimationFrame(this.scalePresentation.bind(this));
+                    this.__lan('state');
                 },
 
                 scalePresentation: function () {
@@ -2337,6 +2535,92 @@
                         this.showPresentationSlide(t);
                     }
                 },
+
+                // ---------------- local server / controller bridge ----------------
+                // Everything below is optional: it only does something when
+                // index.html is served by server.py. From file:// these are
+                // harmless no-ops and the editor works exactly as before.
+
+                isPresActive: function () {
+                    var p = document.getElementById('presentationMode');
+                    return !!(p && p.classList.contains('active'));
+                },
+
+                // SlideAPI.publish() lands here. Only the slide inside the
+                // live presentation may publish — preview/thumb/controller
+                // mirrors are filtered out (mode check) and so is any stale
+                // slide still alive in the iframe after presentation ends.
+                __publish: function (data, mode) {
+                    if (mode !== 'present' || !this.isPresActive()) return;
+                    this.__lan('data', data);
+                },
+
+                // Controller buttons -> current slide (SlideAPI.onEvent).
+                fireSlideEvent: function (name, payload) {
+                    if (!this.isPresActive()) return false;
+                    var pc = document.getElementById('presContent');
+                    var iw = pc && pc.contentWindow;
+                    if (iw && iw.SlideAPI && typeof iw.SlideAPI.__fireEvent === 'function') {
+                        try { iw.SlideAPI.__fireEvent(name, payload); return true; } catch (e) { }
+                    }
+                    return false;
+                },
+
+                // Controller -> slide arbitrary data (SlideAPI.__receiveData).
+                receiveSlideData: function (msg) {
+                    if (!this.isPresActive()) return false;
+                    var data = msg && msg.data;
+                    var targetIndex = msg && msg.targetIndex;
+                    var pc = document.getElementById('presContent');
+                    var iw = pc && pc.contentWindow;
+                    if (iw && iw.SlideAPI && typeof iw.SlideAPI.__receiveData === 'function') {
+                        try { iw.SlideAPI.__receiveData(data, targetIndex); return true; } catch (e) { }
+                    }
+                    return false;
+                },
+
+                // Commands sent by controller.html. While presenting these
+                // behave exactly like the arrow keys / F5 on the computer;
+                // while editing they move the selection so the phone can
+                // mirror and browse the deck.
+                remoteCmd: function (action, index) {
+                    var pres = this.isPresActive();
+                    if (action === 'play') {
+                        if (!pres && this.slides.length) this.togglePresentation();
+                        return true;
+                    }
+                    if (action === 'stop') {
+                        if (pres) this.togglePresentation();
+                        return true;
+                    }
+                    if (action === 'next') {
+                        if (pres) this.gotoDir(1);
+                        else if (this.currentIndex >= 0 && this.currentIndex < this.slides.length - 1) {
+                            this.selectSlide(this.currentIndex + 1);
+                        }
+                        return true;
+                    }
+                    if (action === 'prev') {
+                        if (pres) this.gotoDir(-1);
+                        else if (this.currentIndex > 0) this.selectSlide(this.currentIndex - 1);
+                        return true;
+                    }
+                    if (action === 'goto') {
+                        var i = parseInt(index, 10);
+                        if (isNaN(i) || i < 0 || i >= this.slides.length) return false;
+                        if (pres) this.gotoSlide(i);
+                        else this.selectSlide(i);
+                        return true;
+                    }
+                    return false;
+                },
+
+                // Ask the local-server client (defined below) to re-publish.
+                // window.__lanSync only exists when the server is connected.
+                 __lan: function (kind, payload) {
+                     try { if (window.__lanSync) window.__lanSync(kind, payload); } catch (e) { }
+                     try { if (window.__cloudSync) window.__cloudSync(kind, payload); } catch (e) { }
+                 },
 
                 setTransition: function (t) {
                     this.transition = t;
@@ -2543,6 +2827,7 @@
                         };
                         localStorage.setItem('slideEditorProject', JSON.stringify(data));
                     } catch (e) { }
+                    this.__lan('deck');
                 },
 
                 loadFromStorage: function () {
@@ -2604,6 +2889,9 @@
             };
 
             window.editor = editor;
+            // Used by the local-server client below to ship bridge-injected
+            // slide HTML to controller.html (so SlideAPI exists there too).
+            window.__injectSlideBridge = injectBridge;
 
             // Keyboard shortcuts
             document.addEventListener('keydown', function (e) {
@@ -2689,8 +2977,189 @@
                     document.body.style.overflow = '';
                     editor.outPending = false;
                     clearTimeout(editor.outTimer);
+                    editor.__lan('data', { kind: 'clear' });
+                    editor.__lan('state');
                 }
             });
+        })();
+    </script>
+
+    <script>
+        // -----------------------------------------------------------------
+        // Local LAN bridge (optional). Runs only when this page is served
+        // over http/https — i.e. by server.py. Opened straight from disk
+        // (file://) this whole block no-ops and the editor works offline.
+        //
+        //   deck  : current slides (bridge-injected)      -> controller.html
+        //   state : index / total / presenting            -> controller.html
+        //   data  : SlideAPI.publish() from the live slide -> controller.html
+        //   cmd   : prev/next/goto/play/stop from phone   -> editor.remoteCmd
+        //   evt   : custom buttons from controller        -> SlideAPI.onEvent
+        // -----------------------------------------------------------------
+        (function () {
+            'use strict';
+            if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+
+            var ws = null;
+            var retry = 0;
+            var attempts = 0;
+            var replaced = false;
+            var lastDeck = null;
+            var lastState = null;
+            var syncTimer = null;
+            var pending = {};
+
+            var chip = document.getElementById('lanChip');
+            var chipText = document.getElementById('lanChipText');
+
+            function setChip(kind, text) {
+                if (!chip) return;
+                chip.style.display = 'flex';
+                chip.className = 'lan-chip ' + kind;
+                if (chipText) chipText.textContent = text;
+            }
+
+            function send(obj) {
+                if (ws && ws.readyState === 1) {
+                    try { ws.send(JSON.stringify(obj)); } catch (e) { }
+                }
+            }
+
+            // ---------------- payloads ----------------
+
+            function deckPayload() {
+                var out = [];
+                for (var i = 0; i < editor.slides.length; i++) {
+                    var s = editor.slides[i];
+                    var d = editor.getSlideDimensions(s.html) || { width: 1280, height: 720 };
+                    out.push({
+                        html: window.__injectSlideBridge(s.html, 'controller'),
+                        t: s.transition || editor.transition,
+                        w: d.width,
+                        h: d.height
+                    });
+                }
+                return out;
+            }
+
+            function pushDeck(force) {
+                var slides = deckPayload();
+                var json = JSON.stringify(slides);
+                if (!force && json === lastDeck) return;
+                lastDeck = json;
+                send({ t: 'deck', slides: slides });
+            }
+
+            function pushState(force) {
+                var st = {
+                    index: editor.currentIndex,
+                    total: editor.slides.length,
+                    presenting: editor.isPresActive()
+                };
+                var json = JSON.stringify(st);
+                if (!force && json === lastState) return;
+                lastState = json;
+                send({ t: 'state', index: st.index, total: st.total, presenting: st.presenting });
+            }
+
+            // editor.__lan() lands here. Deck/state pushes are coalesced
+            // (typing in the code editor fires them in bursts); live data is
+            // forwarded immediately so timers stay smooth on the phone.
+            window.__lanSync = function (kind, payload) {
+                if (replaced) return;
+                if (kind === 'data') { send({ t: 'data', data: payload }); return; }
+                pending[kind] = true;
+                if (syncTimer) return;
+                syncTimer = setTimeout(function () {
+                    syncTimer = null;
+                    var p = pending;
+                    pending = {};
+                    if (p.deck) pushDeck(false);
+                    if (p.state) pushState(false);
+                }, 120);
+            };
+
+            // ---------------- socket ----------------
+
+            function wsUrl() {
+                return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+            }
+
+            function connect() {
+                if (replaced) return;
+                setChip('connecting', 'LAN…');
+                try { ws = new WebSocket(wsUrl()); }
+                catch (e) { scheduleRetry(); return; }
+
+                ws.onopen = function () {
+                    retry = 0;
+                    attempts = 0;
+                    setChip('online', 'Controller on');
+                    send({ t: 'role', role: 'editor' });
+                    send({ t: 'data', data: { kind: 'clear' } });  // drop stale values
+                    pushDeck(true);
+                    pushState(true);
+                };
+
+                ws.onmessage = function (e) {
+                    var m;
+                    try { m = JSON.parse(e.data); } catch (err) { return; }
+                    if (!m || !m.t) return;
+                    if (m.t === 'cmd') {
+                        editor.remoteCmd(m.action, m.index);
+                    } else if (m.t === 'evt') {
+                        editor.fireSlideEvent(m.name, m.payload);
+                    } else if (m.t === 'slide_data') {
+                        editor.receiveSlideData(m.data);
+                    } else if (m.t === 'editor_replaced') {
+                        // Another editor tab took over — stand down for good.
+                        replaced = true;
+                        setChip('offline', 'other tab');
+                        try { ws && ws.close(); } catch (err) { }
+                        editor.notify('Opened in another tab — controller released');
+                    } else if (m.t === 'error') {
+                        console.warn('[LAN] ' + m.error);
+                    }
+                };
+
+                ws.onclose = function () {
+                    ws = null;
+                    if (replaced) return;
+                    scheduleRetry();
+                };
+
+                ws.onerror = function () { try { ws && ws.close(); } catch (e) { } };
+            }
+
+            function scheduleRetry() {
+                if (replaced) return;
+                attempts++;
+                if (attempts > 8) {
+                    setChip('offline', 'no server');
+                    setTimeout(connect, 10000);   // keep trying, just stop shouting
+                } else {
+                    setChip('connecting', 'LAN…');
+                    var delay = Math.min(500 * Math.pow(2, retry++), 5000);
+                    setTimeout(connect, delay);
+                }
+            }
+
+            // Click the chip to copy the controller URL.
+            if (chip) {
+                chip.addEventListener('click', function () {
+                    var url = location.origin + '/controller';
+                    var ok = function () { editor.notify('Controller link copied — open it on your phone'); };
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(url).then(ok, function () {
+                            window.prompt('Controller URL:', url);
+                        });
+                    } else {
+                        window.prompt('Controller URL:', url);
+                    }
+                });
+            }
+
+            connect();
         })();
     </script>
 
@@ -3663,6 +4132,219 @@
                 ws.send(buildSystemContext() + '\n\nUser: ' + text);
                 showThinking();
             });
+            // ---------- Cloud pairing (cross-network controller) ----------
+            var CLOUD_API = 'https://api.akcore.dev/Html-Presentation-Api';
+            var CLOUD_CONTROLLER_URL = 'https://firemarios.github.io/html-presentation/controller';
+            var cloudWs = null;
+            var cloudPairCode = null;
+            var cloudLastDeck = null;
+            var cloudLastState = null;
+            var cloudSyncTimer = null;
+            var cloudPending = {};
+
+            function cloudSend(obj) {
+                if (cloudWs && cloudWs.readyState === 1) {
+                    try { cloudWs.send(JSON.stringify(obj)); } catch (e) { }
+                }
+            }
+
+            function cloudDeckPayload() {
+                var out = [];
+                for (var i = 0; i < editor.slides.length; i++) {
+                    var s = editor.slides[i];
+                    var d = editor.getSlideDimensions(s.html) || { width: 1280, height: 720 };
+                    out.push({
+                        html: (window.__injectSlideBridge ? window.__injectSlideBridge(s.html, 'controller') : s.html),
+                        t: s.transition || editor.transition,
+                        w: d.width,
+                        h: d.height
+                    });
+                }
+                return out;
+            }
+
+            function cloudPushDeck(force) {
+                var slides = cloudDeckPayload();
+                var json = JSON.stringify(slides);
+                if (!force && json === cloudLastDeck) return;
+                cloudLastDeck = json;
+                cloudSend({ t: 'deck', slides: slides });
+            }
+
+            function cloudPushState(force) {
+                var st = { index: editor.currentIndex, total: editor.slides.length, presenting: editor.isPresActive() };
+                var json = JSON.stringify(st);
+                if (!force && json === cloudLastState) return;
+                cloudLastState = json;
+                cloudSend({ t: 'state', index: st.index, total: st.total, presenting: st.presenting });
+            }
+
+            window.__cloudSync = function (kind, payload) {
+                if (!cloudWs || cloudPairCode === null) return;
+                if (kind === 'data') { cloudSend({ t: 'data', data: payload }); return; }
+                cloudPending[kind] = true;
+                if (cloudSyncTimer) return;
+                cloudSyncTimer = setTimeout(function () {
+                    cloudSyncTimer = null;
+                    var p = cloudPending; cloudPending = {};
+                    if (p.deck) cloudPushDeck(false);
+                    if (p.state) cloudPushState(false);
+                }, 120);
+            };
+
+            function cloudConnect(code) {
+                cloudPairCode = code;
+                cloudLastDeck = null;
+                cloudLastState = null;
+                try { if (cloudWs) { cloudWs.onclose = null; cloudWs.close(); } } catch (e) { }
+                var url = (CLOUD_API.indexOf('https') === 0 ? 'wss://' : 'ws://') + CLOUD_API.replace(/^https?:\/\//, '') + '/ws?pair_code=' + encodeURIComponent(code) + '&role=editor&token=' + encodeURIComponent(authToken);
+                console.log('[cloud] connecting', url);
+                cloudWs = new WebSocket(url);
+                cloudWs.onopen = function () {
+                    console.log('[cloud] open');
+                    cloudSend({ t: 'role', role: 'editor' });
+                    cloudSend({ t: 'data', data: { kind: 'clear' } });
+                    console.log('[cloud] push deck', editor.slides.length, 'state', editor.currentIndex);
+                    cloudPushDeck(true);
+                    cloudPushState(true);
+                };
+                cloudWs.onmessage = function (e) {
+                    console.log('[cloud] recv', (e.data||'').slice(0,120));
+                    var m; try { m = JSON.parse(e.data); } catch (err) { return; }
+                    if (!m || !m.t) return;
+                    if (m.t === 'resync') { cloudPushDeck(true); cloudPushState(true); }
+                    else if (m.t === 'cmd') editor.remoteCmd(m.action, m.index);
+                    else if (m.t === 'evt') editor.fireSlideEvent(m.name, m.payload);
+                    else if (m.t === 'slide_data') editor.receiveSlideData(m.data);
+                    else if (m.t === 'error' && editor.notify) editor.notify(m.error || 'Controller error');
+                };
+                cloudWs.onclose = function (e) { console.log('[cloud] close', e && e.code, e && e.reason); cloudWs = null; };
+                cloudWs.onerror = function () { try { cloudWs && cloudWs.close(); } catch (e) { } };
+            }
+
+            var currentPairCode = null;
+            var currentShortCode = null;
+            var pairCountdownTimer = null;
+            var pairUI = {
+                connect: function () {
+                    if (!authUI.user || !authToken) { authUI.openLogin(); return; }
+                    if (currentPairCode) {
+                        var self = this;
+                        this.refreshShortCode(currentPairCode).then(function (d) {
+                            self.show(currentPairCode, currentShortCode, (d && d.expires_in) || 120);
+                        }).catch(function () {
+                            self.show(currentPairCode, currentShortCode, 120);
+                        });
+                        return;
+                    }
+                    fetch(CLOUD_API + '/pair/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken }
+                    }).then(function (res) {
+                        if (!res.ok) throw new Error('HTTP ' + res.status);
+                        return res.json();
+                    }).then(function (data) {
+                        currentPairCode = data.pair_code;
+                        currentShortCode = data.short_code || null;
+                        cloudConnect(currentPairCode);
+                        pairUI.show(currentPairCode, currentShortCode, data.expires_in || 120);
+                    }).catch(function (err) {
+                        if (editor.notify) editor.notify('Cannot create pair code: ' + (err && err.message ? err.message : err));
+                    });
+                },
+                show: function (code, shortCode, expiresIn) {
+                    var url = CLOUD_CONTROLLER_URL + '?pair_code=' + encodeURIComponent(code);
+                    var qrEl = document.getElementById('pairQr');
+                    qrEl.innerHTML = '';
+                    qrEl.style.background = '#ffffff';
+                    qrEl.style.padding = '12px';
+                    qrEl.style.borderRadius = '8px';
+                    qrEl.style.border = '2px solid var(--border)';
+                    qrEl.style.display = 'inline-block';
+                    try { new QRCode(qrEl, { text: url, width: 200, height: 200, colorDark: '#000000', colorLight: '#ffffff' }); } catch (e) { qrEl.textContent = url; }
+                    document.getElementById('pairCode').textContent = 'Pair code: ' + code;
+                    var scEl = document.getElementById('pairShortCode');
+                    var cdEl = document.getElementById('pairCountdown');
+                    if (shortCode) {
+                        scEl.textContent = shortCode;
+                        scEl.style.display = '';
+                        if (pairCountdownTimer) clearInterval(pairCountdownTimer);
+                        var remaining = expiresIn || 120;
+                        var tick = function () {
+                            var m = Math.floor(remaining / 60);
+                            var s = remaining % 60;
+                            cdEl.textContent = 'Short code valid for ' + m + ':' + (s < 10 ? '0' : '') + s;
+                            if (remaining <= 0) {
+                                clearInterval(pairCountdownTimer);
+                                pairCountdownTimer = null;
+                                scEl.style.display = 'none';
+                                cdEl.textContent = 'Short code expired — rescan QR or recreate';
+                            }
+                            remaining--;
+                        };
+                        tick();
+                        pairCountdownTimer = setInterval(tick, 1000);
+                    } else {
+                        scEl.style.display = 'none';
+                        cdEl.textContent = '';
+                    }
+                    document.getElementById('pairOverlay').classList.add('open');
+                },
+                refreshShortCode: function (code) {
+                    var endpoints = [
+                        '/pair/' + encodeURIComponent(code) + '/short_code',
+                        '/pair/' + encodeURIComponent(code) + '/refresh',
+                        '/pair/refresh'
+                    ];
+                    var body = JSON.stringify({ pair_code: code });
+                    var tryNext = function (i) {
+                        if (i >= endpoints.length) {
+                            console.error('[pair] no refresh endpoint succeeded');
+                            throw new Error('no refresh endpoint');
+                        }
+                        return fetch(CLOUD_API + endpoints[i], {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+                            body: (endpoints[i].indexOf('/pair/refresh') !== -1) ? body : '{}'
+                        }).then(function (res) {
+                            if (!res.ok) throw new Error('HTTP ' + res.status + ' @ ' + endpoints[i]);
+                            return res.json();
+                        }).catch(function (err) {
+                            console.warn('[pair] refresh failed:', err && err.message);
+                            return tryNext(i + 1);
+                        });
+                    };
+                    return tryNext(0).then(function (data) {
+                        if (data && data.short_code) currentShortCode = data.short_code;
+                        return data;
+                    });
+                },
+                close: function () {
+                    document.getElementById('pairOverlay').classList.remove('open');
+                }
+            };
+            window.pairUI = pairUI;
+
+            window.addEventListener('beforeunload', function () {
+                if (!currentPairCode) return;
+                try {
+                    fetch(CLOUD_API + '/pair/' + encodeURIComponent(currentPairCode), {
+                        method: 'DELETE',
+                        headers: { 'Authorization': 'Bearer ' + (authToken || '') },
+                        keepalive: true
+                    });
+                } catch (e) { }
+            });
+
+            (function () {
+                var ov = document.getElementById('pairOverlay');
+                if (!ov) return;
+                ov.addEventListener('mousedown', function (e) { if (e.target === e.currentTarget) pairUI.close(); });
+                document.addEventListener('keydown', function (e) {
+                    if (e.key === 'Escape' && ov.classList.contains('open')) pairUI.close();
+                });
+            })();
+
         })();
     </script>
 
@@ -3752,7 +4434,11 @@
                     });
                 }
             }
+
         })();
+
+        })();
+
     </script>
 </body>
 

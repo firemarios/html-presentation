@@ -32,6 +32,11 @@
         }
 
         html,
+        html {
+            height: 100%;
+            overflow: hidden;
+        }
+
         body {
             height: 100%;
         }
@@ -43,6 +48,7 @@
             height: 100vh;
             height: 100dvh;
             overflow: hidden;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
             -webkit-tap-highlight-color: transparent;
@@ -527,6 +533,7 @@
                 grid-template-columns: 80% 20%;
                 flex: 1;
                 min-height: 0;
+                min-width: 0;
                 overflow: hidden;
                 align-items: stretch;
                 gap: 0;
@@ -536,6 +543,8 @@
             .stage-area,
             aside {
                 min-height: 0;
+                min-width: 0;
+                overflow: hidden;
             }
 
             .right-wrap {

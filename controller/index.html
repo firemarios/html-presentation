@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#0f0f0f">
+    <title>Slide Controller</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #1a1a1a;
+            --bg-darker: #0f0f0f;
+            --bg-panel: #252525;
+            --border: #444;
+            --accent: #2b579a;
+            --accent-hi: #3a6fbf;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --green: #2ea043;
+            --amber: #d29922;
+            --red: #dc2626;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-darker);
+            color: var(--text);
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        /* Prevent zoom on input focus (iOS) */
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+
+        /* Disable text selection and callout */
+        * {
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* ---------------- header ---------------- */
+        header {
+            flex-shrink: 0;
+            height: 48px;
+            background: var(--bg-dark);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+            padding-top: env(safe-area-inset-top);
+            height: calc(48px + env(safe-area-inset-top));
+        }
+
+        .brand {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-hi);
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            white-space: nowrap;
+        }
+
+        .counter {
+            margin-left: auto;
+            font-size: 15px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            color: var(--text);
+            white-space: nowrap;
+        }
+
+        .live-badge {
+            display: none;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #fff;
+            background: var(--red);
+            padding: 2px 7px;
+            border-radius: 3px;
+        }
+
+        .live-badge.on {
+            display: inline-block;
+            animation: pulse 1.6s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .55;
+            }
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            flex-shrink: 0;
+        }
+
+        .dot.on {
+            background: var(--green);
+            box-shadow: 0 0 8px rgba(46, 160, 67, .8);
+        }
+
+        .dot.wait {
+            background: var(--amber);
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+
+        /* ---------------- layout ---------------- */
+        main {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .stage-area {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+        }
+
+        .stage {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            overflow: hidden;
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .stage .placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-dim);
+            font-size: 13px;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .slide-frame {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            border: none;
+            background: #0d1117;
+            transform-origin: center center;
+            pointer-events: none;
+        }
+
+        /* ---------------- controls ---------------- */
+        .right-wrap {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .controls-panel {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px;
+            border-right: 1px solid var(--border);
+            background: var(--bg-dark);
+        }
+
+        .controls-panel .controls {
+            flex-direction: column;
+            padding: 0;
+        }
+
+        .controls {
+            flex-shrink: 0;
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+            padding: 0 max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+            padding-bottom: max(8px, env(safe-area-inset-bottom));
+        }
+
+        .ctl {
+            flex: 1;
+            min-height: 56px;
+            border: 1px solid var(--border);
+            background: var(--bg-panel);
+            color: var(--text);
+            border-radius: 10px;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background .15s, transform .1s;
+            justify-self: center;
+            text-align: center;
+        }
+
+        .ctl:active {
+            transform: scale(.96);
+            background: var(--accent);
+        }
+
+        .ctl.active {
+            background: linear-gradient(135deg, #a855f7, #7e22ce);
+            border-color: #a855f7;
+            box-shadow: 0 0 16px rgba(168, 85, 247, 0.5);
+        }
+
+        .ctl.primary {
+            flex: 1.6;
+            background: var(--accent);
+            border-color: var(--accent);
+            font-size: 17px;
+            font-weight: 600;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .ctl.primary > span {
+            display: inline-flex;
+            align-items: center;
+            line-height: 1;
+        }
+
+        .ctl.primary:active {
+            background: var(--accent-hi);
+        }
+
+        /* Ensure icons align with text in buttons */
+        .ctl i {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            flex-shrink: 0;
+            text-align: center;
+        }
+
+        .jump {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .jump input {
+            width: 74px;
+            min-height: 44px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 16px;
+            text-align: center;
+            outline: none;
+        }
+
+        .jump input:focus {
+            border-color: var(--accent);
+        }
+
+        .jump button {
+            min-height: 44px;
+            padding: 0 14px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 14px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        .jump button:active {
+            background: var(--accent);
+        }
+
+        /* ---------------- aside ---------------- */
+        aside {
+            flex-shrink: 0;
+            border-top: 1px solid var(--border);
+            background: var(--bg-dark);
+            padding: 10px max(12px, env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 42vh;
+            overflow-y: auto;
+        }
+
+        aside.hidden {
+            display: none;
+        }
+
+        .sec-title {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-dim);
+        }
+
+        /* filmstrip */
+        .film {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding-bottom: 2px;
+        }
+
+        .film::-webkit-scrollbar {
+            height: 0;
+        }
+
+        .film .empty {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        .mini {
+            position: relative;
+            flex: 0 0 auto;
+            width: 160px;
+            height: 90px;
+            background: #0d1117;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color .15s;
+        }
+
+        .mini:active {
+            border-color: var(--accent-hi);
+        }
+
+        .mini .num {
+            position: absolute;
+            top: 3px;
+            left: 4px;
+            z-index: 5;
+            font-size: 9px;
+            color: #fff;
+            background: rgba(0, 0, 0, .65);
+            padding: 1px 5px;
+            border-radius: 2px;
+        }
+
+        /* live data */
+        .live-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .live-grid .empty {
+            font-size: 12px;
+            color: var(--text-dim);
+            font-style: italic;
+        }
+
+        .metric {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 7px 12px;
+            min-width: 96px;
+        }
+
+        .metric .lbl {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: var(--text-dim);
+            white-space: nowrap;
+        }
+
+        .metric .val {
+            font-size: 22px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #fff;
+            line-height: 1.2;
+            word-break: break-word;
+        }
+
+        .metric .val small {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-dim);
+            margin-left: 3px;
+        }
+
+        .metric.text .val {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .metric.extra {
+            flex: 1 1 100%;
+        }
+
+        .metric.extra pre {
+            font-size: 11px;
+            color: var(--text);
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 110px;
+            overflow-y: auto;
+        }
+
+        /* slide event buttons */
+        .evt-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .evt-btn {
+            min-height: 44px;
+            padding: 0 16px;
+            background: var(--accent);
+            border: 1px solid var(--accent-hi);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: transform .1s;
+        }
+
+        .evt-btn:active {
+            transform: scale(.95);
+            background: var(--accent-hi);
+        }
+
+        /* ---------------- banner ---------------- */
+        .banner {
+            flex-shrink: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(220, 38, 38, .15);
+            border-bottom: 1px solid var(--red);
+            color: #ff8a8a;
+            font-size: 12px;
+            padding: 7px 12px;
+        }
+
+        .banner.show {
+            display: flex;
+        }
+
+        .banner i {
+            font-size: 14px;
+        }
+
+        /* ---------------- tablet / iPad ---------------- */
+        @media (min-width: 768px) {
+            main {
+                display: grid;
+                grid-template-columns: 80% 20%;
+                flex: 1;
+                min-height: 0;
+                overflow: hidden;
+                align-items: stretch;
+                gap: 0;
+            }
+
+            .right-wrap,
+            .stage-area,
+            aside {
+                min-height: 0;
+            }
+
+            .right-wrap {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .controls-panel {
+                width: 100%;
+                max-width: none;
+                border-right: none;
+                border-bottom: none;
+                border-top: 1px solid var(--border);
+                padding: 12px;
+                min-height: 0;
+            }
+
+            .controls-panel .controls {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: stretch;
+            }
+
+            .controls .ctl {
+                min-height: 64px;
+                font-size: 24px;
+            }
+
+            .stage-area {
+                width: 100%;
+                min-height: 0;
+                padding: 0;
+                gap: 0;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            .stage-area .stage {
+                flex: 1 1 0;
+                min-height: 0;
+                width: 100%;
+            }
+
+            aside {
+                width: 100%;
+                max-width: none;
+                border-top: none;
+                border-left: 1px solid var(--border);
+                padding: 16px;
+                overflow-y: auto;
+                height: 100%;
+                max-height: none;
+            }
+
+            .film {
+                flex-wrap: wrap;
+                overflow-x: visible;
+            }
+
+            .mini {
+                width: calc(50% - 4px);
+            }
+
+            .metric .val {
+                font-size: 26px;
+            }
+        }
+
+        /* iPad 4th gen (1024x768) - ensure filmstrip works */
+        @media (max-width: 1024px) and (max-height: 768px) and (min-width: 768px) {
+            aside {
+                width: 340px;
+            }
+            .mini {
+                width: calc(50% - 4px);
+                min-width: 160px;
+            }
+            .film {
+                gap: 6px;
+            }
+        }
+
+        /* iPad landscape - more space for filmstrip */
+        @media (min-width: 1024px) and (orientation: landscape) {
+            aside {
+                width: 400px;
+            }
+
+            .mini {
+                width: calc(33.333% - 5px);
+            }
+        }
+
+        /* iPad portrait - better sidebar */
+        @media (min-width: 768px) and (max-width: 1023px) and (orientation: portrait) {
+            aside {
+                width: 320px;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .brand span {
+                display: none;
+            }
+
+            .ctl {
+                min-height: 52px;
+            }
+        }
+
+        /* ---------------- Preview Mode ---------------- */
+        .preview-badge {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 10;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(126, 34, 206, 0.95));
+            color: #fff;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 24px rgba(168, 85, 247, 0.4);
+            animation: previewPulse 1.5s ease-in-out infinite;
+        }
+
+        .preview-badge.active {
+            display: flex;
+        }
+
+        .preview-badge-text {
+            white-space: nowrap;
+        }
+
+        .preview-badge-slide {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        @keyframes previewPulse {
+            0%, 100% { opacity: 1; box-shadow: 0 4px 24px rgba(168, 85, 247, 0.4); }
+            50% { opacity: 0.85; box-shadow: 0 4px 32px rgba(168, 85, 247, 0.6); }
+        }
+
+        .preview-controls {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 0 12px;
+        }
+
+        .preview-controls.active {
+            display: flex;
+        }
+
+        .preview-btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            touch-action: manipulation;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: transform 0.1s, box-shadow 0.2s;
+        }
+
+        .preview-btn:active {
+            transform: scale(0.96);
+        }
+
+        .preview-btn.confirm {
+            background: linear-gradient(135deg, #a855f7, #7e22ce);
+            color: #fff;
+            box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+        }
+
+        .preview-btn.confirm:active {
+            box-shadow: 0 2px 8px rgba(168, 85, 247, 0.6);
+        }
+
+        .preview-btn.cancel {
+            background: var(--bg-panel);
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+
+        .preview-btn.cancel:active {
+            background: var(--bg-dark);
+        }
+
+        /* Data input section */
+        .data-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .data-input-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .data-input-row select,
+        .data-input-row input {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 13px;
+            padding: 8px 10px;
+        }
+
+        .data-input-row select:focus,
+        .data-input-row input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .data-input-row textarea {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            font-size: 12px;
+            padding: 8px;
+            resize: vertical;
+        }
+
+        .data-input-row textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .preview-mode-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #a855f7, #7e22ce);
+            color: #fff;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            animation: previewPulse 1.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="brand"><i class="fas fa-satellite-dish"></i> <span>Controller</span></div>
+        <span class="live-badge" id="liveBadge"><i class="fas fa-broadcast-tower"></i> LIVE</span>
+        <div class="counter" id="counter">– / –</div>
+        <span class="preview-mode-indicator" id="previewModeIndicator" style="display:none;"><i class="fas fa-eye"></i> Preview</span>
+        <div class="status"><span class="dot" id="dot"></span><span id="statusText">connecting…</span></div>
+    </header>
+
+    <div class="banner" id="banner"><i class="fas fa-exclamation-triangle"></i> Presentation editor is offline</div>
+
+    <div id="pairGate" style="position:fixed;inset:0;background:var(--bg-darker);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px;">
+        <div style="width:100%;max-width:360px;background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;">
+            <div style="font-size:16px;font-weight:600;margin-bottom:12px;"><i class="fas fa-link"></i> Connect to presentation</div>
+            <div id="pairGateStatus" style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">Scan the QR code or enter the code shown on the presentation.</div>
+            <div id="qrReader" style="width:100%;margin-bottom:12px;"></div>
+            <button id="scanBtn" class="ctl" style="width:100%;margin-bottom:10px;"><i class="fas fa-camera"></i> Scan QR Code</button>
+            <div style="display:flex;gap:8px;">
+                <input id="manualCode" type="text" placeholder="Enter code" style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-dark);color:var(--text);">
+                <button id="manualBtn" class="ctl" style="flex:0 0 80px;"><i class="fas fa-check"></i></button>
+            </div>
+        </div>
+    </div>
+
+
+    <main>
+        <div class="right-wrap">
+<div class="stage-area">
+            <div class="stage" id="stage">
+                <div class="placeholder" id="placeholder">Waiting for the presentation…<br>Open the editor on the
+                    computer.</div>
+
+                <!-- Preview Badge (top-left of stage) -->
+                <div class="preview-badge" id="previewBadge">
+                    <span class="preview-badge-text">Preview</span>
+                    <span class="preview-badge-slide">Slide <span id="previewSlideNum">–</span> of <span id="previewTotalSlides">–</span></span>
+                </div>
+            </div>
+
+        </div>
+
+        
+<div class="controls-panel">
+            <div class="controls">
+                <button class="ctl" id="btnPrev" aria-label="Previous slide"><i class="fas fa-chevron-left"></i></button>
+                <button class="ctl primary" id="btnPlay" aria-label="Start or stop presentation"><i class="fas fa-play" id="playIcon"></i> <span id="playText">Present</span></button>
+                <button class="ctl" id="btnNext" aria-label="Next slide"><i class="fas fa-chevron-right"></i></button>
+                <button class="ctl" id="btnFullscreen" aria-label="Toggle fullscreen"><i class="fas fa-expand" id="fsIcon"></i></button>
+                <button class="ctl" id="btnPreviewMode" aria-label="Toggle preview mode" title="Preview Mode"><i class="fas fa-eye"></i></button>
+                <!-- Preview Controls (shown when in preview mode) -->
+                <div class="preview-controls" id="previewControls">
+                    <button class="preview-btn cancel" id="btnPreviewCancel"><i class="fas fa-times"></i> Cancel</button>
+                    <button class="preview-btn confirm" id="btnPreviewConfirm"><i class="fas fa-forward"></i> Transition</button>
+                </div>
+                <div class="jump">
+                    <input type="number" id="jumpInput" min="1" inputmode="numeric" aria-label="Slide number">
+                    <button id="btnJump">Go</button>
+                </div>
+            </div>
+        </div></div>
+<aside id="aside">
+            <div id="filmSec" style="display:none;">
+                <div class="sec-title">Up next</div>
+                <div class="film" id="film"></div>
+            </div>
+
+            <div id="dataSec" style="display:none;">
+                <div class="sec-title">Send data to preview</div>
+                <div class="data-inputs">
+                    <div class="data-input-row">
+                        <select id="dataKind" style="min-width:120px;">
+                            <option value="metric">Metric</option>
+                            <option value="text">Text</option>
+                            <option value="custom">Custom JSON</option>
+                        </select>
+                    </div>
+                    <div class="data-input-row" id="metricFields" style="display:flex;">
+                        <input type="text" id="metricLabel" placeholder="Label" style="flex:1;">
+                        <input type="number" id="metricValue" placeholder="Value" step="any" style="width:80px;">
+                        <input type="text" id="metricUnit" placeholder="Unit" style="width:60px;">
+                    </div>
+                    <div class="data-input-row" id="textFields" style="display:none; flex-direction:column; gap:6px;">
+                        <input type="text" id="textLabel" placeholder="Label" style="flex:1;">
+                        <input type="text" id="textValue" placeholder="Text" style="flex:1;">
+                    </div>
+                    <div class="data-input-row" id="customFields" style="display:none;">
+                        <textarea id="customJson" placeholder='{"key": "value"}' rows="3" style="width:100%; font-family:monospace; font-size:12px; background:var(--bg-panel); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:8px;"></textarea>
+                    </div>
+                    <button class="ctl" id="btnSendData" style="margin-top:8px; width:100%;"><i class="fas fa-paper-plane"></i> Send to Slide</button>
+                </div>
+            </div>
+
+            <div id="evtSec" style="display:none;">
+                <div class="sec-title">Slide controls</div>
+                <div class="evt-row" id="evtRow"></div>
+            </div>
+
+            <div id="liveSec" style="display:none;">
+                <div class="sec-title">Live data</div>
+                <div class="live-grid" id="liveGrid"></div>
+            </div>
+        </aside>
+
+    </main>
+
+    <script>
+        (function () {
+            'use strict';
+
+            /* ================= state ================= */
+            var ws = null;
+            var retry = 0;
+            var deck = [];            // [{html, t, w, h}]
+            var deckVersion = 0;
+            var state = { index: -1, total: 0, presenting: false };
+            var editorOnline = false;
+            var renderedStage = { index: -2, deck: -1 };
+            var renderedFilm = { index: -2, deck: -1 };
+
+            // live data from the current slide
+            var metrics = {};   // label -> {label, value, unit}
+            var texts = {};     // label -> {label, text}
+            var extra = null;   // last unknown payload
+            var evtButtons = [];
+
+            /* ================= elements ================= */
+            var stage = document.getElementById('stage');
+            var placeholder = document.getElementById('placeholder');
+            var counter = document.getElementById('counter');
+            var liveBadge = document.getElementById('liveBadge');
+            var dot = document.getElementById('dot');
+            var statusText = document.getElementById('statusText');
+            var banner = document.getElementById('banner');
+            var film = document.getElementById('film');
+            var filmSec = document.getElementById('filmSec');
+            var evtSec = document.getElementById('evtSec');
+            var evtRow = document.getElementById('evtRow');
+            var dataSec = document.getElementById('dataSec');
+            var dataKind = document.getElementById('dataKind');
+            var metricFields = document.getElementById('metricFields');
+            var textFields = document.getElementById('textFields');
+            var customFields = document.getElementById('customFields');
+            var metricLabel = document.getElementById('metricLabel');
+            var metricValue = document.getElementById('metricValue');
+            var metricUnit = document.getElementById('metricUnit');
+            var textLabel = document.getElementById('textLabel');
+            var textValue = document.getElementById('textValue');
+            var customJson = document.getElementById('customJson');
+            var liveSec = document.getElementById('liveSec');
+            var liveGrid = document.getElementById('liveGrid');
+            var aside = document.getElementById('aside');
+            var jumpInput = document.getElementById('jumpInput');
+            var playIcon = document.getElementById('playIcon');
+            var playText = document.getElementById('playText');
+            var fsIcon = document.getElementById('fsIcon');
+            var previewBadge = document.getElementById('previewBadge');
+            var previewControls = document.getElementById('previewControls');
+            var previewSlideNum = document.getElementById('previewSlideNum');
+            var previewTotalSlides = document.getElementById('previewTotalSlides');
+            var previewModeIndicator = document.getElementById('previewModeIndicator');
+            var origin = location.origin; // for rewriting relative URLs
+
+            // Preview mode state
+            var previewMode = false;
+            var previewTargetIndex = -1;
+
+            var isTablet = function () {
+                return window.matchMedia('(min-width: 768px)').matches;
+            };
+
+            /* ================= websocket ================= */
+            function getPairCode() {
+                try { return new URLSearchParams(location.search).get('pair_code'); } catch (e) { return null; }
+            }
+
+            function wsUrl() {
+                var pc = getPairCode();
+                if (pc) {
+                    return 'wss://api.akcore.dev/Html-Presentation-Api/ws?pair_code=' + encodeURIComponent(pc) + '&role=controller';
+                }
+                var proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+                return proto + location.host + '/ws';
+            }
+
+            function send(obj) {
+                if (ws && ws.readyState === 1) {
+                    try { ws.send(JSON.stringify(obj)); } catch (e) { }
+                }
+            }
+
+            function setStatus(kind, text) {
+                dot.className = 'dot' + (kind ? ' ' + kind : '');
+                statusText.textContent = text;
+            }
+
+            function connect() {
+                setStatus('wait', 'connecting…');
+                try {
+                    console.log('[controller] ws url', wsUrl());
+                ws = new WebSocket(wsUrl());
+                } catch (e) {
+                    scheduleRetry();
+                    return;
+                }
+
+                ws.onopen = function () {
+                    console.log('[controller] open');
+                    retry = 0;
+                    setStatus('on', 'connected');
+                    send({ t: 'role', role: 'controller' });
+                    send({ t: 'resync' });
+                };
+
+                ws.onmessage = function (e) {
+                    console.log('[controller] msg', e.data.slice(0,120));
+                    var m;
+                    try { m = JSON.parse(e.data); } catch (err) { return; }
+                    if (m && m.t) handle(m);
+                };
+
+                ws.onclose = function () {
+                    ws = null;
+                    setStatus('', 'offline');
+                    scheduleRetry();
+                };
+
+                ws.onerror = function () { try { ws && ws.close(); } catch (e) { } };
+            }
+
+            function scheduleRetry() {
+                var delay = Math.min(500 * Math.pow(2, retry++), 5000);
+                setTimeout(function () { if (!ws) connect(); }, delay);
+            }
+
+            /* ================= incoming ================= */
+            function handle(m) {
+                switch (m.t) {
+                    case 'deck':
+                        deck = Array.isArray(m.slides) ? m.slides : [];
+                        deckVersion++;
+                        renderStage(true);
+                        renderFilm(true);
+                        updateAside();
+                        break;
+
+                    case 'state':
+                        state.index = (typeof m.index === 'number') ? m.index : -1;
+                        state.total = m.total || 0;
+                        state.presenting = !!m.presenting;
+                        renderHeader();
+                        renderStage(false);
+                        renderFilm(false);
+                        updateAside();
+                        break;
+
+                    case 'data':
+                        onData(m.data);
+                        break;
+
+                    case 'editor_status':
+                        editorOnline = !!m.online;
+                        banner.classList.toggle('show', !editorOnline);
+                        break;
+
+                    case 'error':
+                        statusText.textContent = m.error || 'error';
+                        break;
+                }
+            }
+
+            function onData(d) {
+                if (!d || typeof d !== 'object') return;
+                if (d.kind === 'clear') {
+                    // editor switched slides — drop the previous slide's values
+                    metrics = {};
+                    texts = {};
+                    extra = null;
+                    evtButtons = [];
+                    updateAside();
+                    return;
+                }
+                if (d.kind === 'metric') {
+                    metrics[String(d.label != null ? d.label : 'value')] = {
+                        label: String(d.label != null ? d.label : 'value'),
+                        value: d.value,
+                        unit: d.unit ? String(d.unit) : ''
+                    };
+                } else if (d.kind === 'text') {
+                    texts[String(d.label != null ? d.label : 'status')] = {
+                        label: String(d.label != null ? d.label : 'status'),
+                        text: String(d.text != null ? d.text : '')
+                    };
+                } else if (d.kind === 'controls') {
+                    evtButtons = Array.isArray(d.buttons)
+                        ? d.buttons.filter(function (b) { return b && b.name; })
+                        : [];
+                } else {
+                    extra = d;
+                }
+                updateAside();
+            }
+
+            /* ================= rendering ================= */
+            function renderHeader() {
+                counter.textContent = (state.index >= 0 ? state.index + 1 : '–') + ' / ' + (state.total || '–');
+                liveBadge.classList.toggle('on', state.presenting);
+                jumpInput.max = state.total || 1;
+                // Update play button
+                if (state.presenting) {
+                    playIcon.className = 'fas fa-stop';
+                    playText.textContent = 'Stop';
+                } else {
+                    playIcon.className = 'fas fa-play';
+                    playText.textContent = 'Present';
+                }
+            }
+
+            function clearStage() {
+                var old = stage.querySelectorAll('.slide-frame');
+                for (var i = 0; i < old.length; i++) old[i].remove();
+            }
+
+            // The iframe must be attached to the document FIRST — Chrome
+            // returns null for contentDocument on detached iframes.
+            function makeFrame(parent, html, stripScripts) {
+                var f = document.createElement('iframe');
+                f.className = 'slide-frame';
+                f.setAttribute('scrolling', 'no');
+                parent.appendChild(f);
+                var doc = null;
+                try {
+                    doc = f.contentDocument;
+                } catch (e) { f.remove(); return null; }
+                if (!doc) { f.remove(); return null; }
+                var src = html || '';
+                if (stripScripts) src = src.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+                // Inject <base> so relative image/asset URLs resolve against the editor origin
+                src = src.replace(/<head[^>]*>/i, function (m) {
+                    return m + '<base href="' + origin + '/">';
+                });
+                doc.open();
+                doc.write(src);
+                doc.close();
+                return f;
+            }
+
+            function fitFrame(f, w, h) {
+                w = w || 1280;
+                h = h || 720;
+                f.style.width = w + 'px';
+                f.style.height = h + 'px';
+                var bw = stage.clientWidth;
+                var bh = stage.clientHeight;
+                if (!bw || !bh) return;
+                var s = Math.min(bw / w, bh / h);
+                f.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+            }
+
+            function fitMini(f, box, w, h) {
+                w = w || 1280;
+                h = h || 720;
+                f.style.width = w + 'px';
+                f.style.height = h + 'px';
+                // Wait for box to have dimensions (iOS 10 Safari flexbox timing)
+                var tryFit = function () {
+                    var bw = box.clientWidth;
+                    var bh = box.clientHeight;
+                    if (bw > 0 && bh > 0) {
+                        var s = Math.min(bw / w, bh / h);
+                        f.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+                    } else {
+                        requestAnimationFrame(tryFit);
+                    }
+                };
+                requestAnimationFrame(tryFit);
+            }
+
+            function renderStage(force) {
+                var idx = state.index;
+                if (idx < 0 || idx >= deck.length || !deck[idx]) {
+                    clearStage();
+                    placeholder.style.display = '';
+                    renderedStage = { index: -2, deck: -1 };
+                    return;
+                }
+                if (!force && renderedStage.index === idx && renderedStage.deck === deckVersion) return;
+
+                renderedStage = { index: idx, deck: deckVersion };
+                placeholder.style.display = 'none';
+                clearStage();
+
+                var s = deck[idx];
+                // Live mirror: scripts keep running (timers/counters stay in sync).
+                var f = makeFrame(stage, s.html, false);
+                if (!f) return;
+                fitFrame(f, s.w, s.h);
+                f._w = s.w;
+                f._h = s.h;
+
+                // "none" slides build their entrance through
+                // SlideAPI.onSlideIn — fire it like the presentation does.
+                if (s.t === 'none' && f.contentWindow && f.contentWindow.SlideAPI &&
+                    typeof f.contentWindow.SlideAPI.__fireIn === 'function') {
+                    var iw = f.contentWindow;
+                    var fire = function () { try { iw.SlideAPI.__fireIn(idx, deck.length); } catch (e) { } };
+                    var d = f.contentDocument;
+                    if (d && d.readyState === 'complete') setTimeout(fire, 0);
+                    else if (d) d.addEventListener('DOMContentLoaded', fire);
+                }
+            }
+
+            function renderFilm(force) {
+                if (!isTablet()) return;
+                var idx = state.index;
+                if (!force && renderedFilm.index === idx && renderedFilm.deck === deckVersion) return;
+                renderedFilm = { index: idx, deck: deckVersion };
+
+                film.innerHTML = '';
+                if (idx < 0 || !deck.length) {
+                    var e = document.createElement('div');
+                    e.className = 'empty';
+                    e.textContent = 'No slides yet';
+                    film.appendChild(e);
+                    return;
+                }
+                var start = idx + 1;
+                var end = Math.min(deck.length, start + 12);
+                if (start >= deck.length) {
+                    var e2 = document.createElement('div');
+                    e2.className = 'empty';
+                    e2.textContent = 'This is the last slide';
+                    film.appendChild(e2);
+                    return;
+                }
+                for (var i = start; i < end; i++) {
+                    (function (n) {
+                        var box = document.createElement('div');
+                        box.className = 'mini';
+                        box.setAttribute('role', 'button');
+                        box.setAttribute('aria-label', 'Go to slide ' + (n + 1));
+                        var num = document.createElement('div');
+                        num.className = 'num';
+                        num.textContent = n + 1;
+                        box.appendChild(num);
+                        box.addEventListener('click', function () { cmd('goto', n); });
+                        film.appendChild(box);   // attach first: contentDocument needs it
+                        // Static previews: scripts stripped so N minis don't burn CPU.
+                        var f = makeFrame(box, deck[n].html, true);
+                        if (f) {
+                            fitMini(f, box, deck[n].w, deck[n].h);
+                            f._w = deck[n].w;
+                            f._h = deck[n].h;
+                            f._box = box;
+                        }
+                    })(i);
+                }
+            }
+
+function updateAside() {
+                // filmstrip: only on tablet
+                var showFilm = isTablet();
+                filmSec.style.display = showFilm ? '' : 'none';
+
+                // data input: only on tablet when in preview mode
+                dataSec.style.display = (showFilm && previewMode) ? '' : 'none';
+
+                // event buttons
+                evtSec.style.display = evtButtons.length ? '' : 'none';
+                evtRow.innerHTML = '';
+                if (evtButtons.length) {
+                    evtButtons.forEach(function (b) {
+                        var el = document.createElement('button');
+                        el.className = 'evt-btn';
+                        el.textContent = b.label || b.name;
+                        el.addEventListener('click', function () {
+                            send({ t: 'evt', name: b.name, payload: b.payload });
+                        });
+                        evtRow.appendChild(el);
+                    });
+                }
+
+                // live data
+                var keys = Object.keys(metrics).concat(Object.keys(texts));
+                var showLive = keys.length > 0 || extra !== null;
+                liveSec.style.display = showLive ? '' : 'none';
+                if (showLive) {
+                    liveGrid.innerHTML = '';
+                    Object.keys(metrics).forEach(function (k) {
+                        var m = metrics[k];
+                        var el = document.createElement('div');
+                        el.className = 'metric';
+                        el.innerHTML = '<div class="lbl"></div><div class="val"></div>';
+                        el.children[0].textContent = m.label;
+                        var val = String(m.value == null ? '–' : m.value);
+                        el.children[1].textContent = val;
+                        if (m.unit) {
+                            var u = document.createElement('small');
+                            u.textContent = m.unit;
+                            el.children[1].appendChild(u);
+                        }
+                        liveGrid.appendChild(el);
+                    });
+                    Object.keys(texts).forEach(function (k) {
+                        var t = texts[k];
+                        var el = document.createElement('div');
+                        el.className = 'metric text';
+                        el.innerHTML = '<div class="lbl"></div><div class="val"></div>';
+                        el.children[0].textContent = t.label;
+                        el.children[1].textContent = t.text;
+                        liveGrid.appendChild(el);
+                    });
+                    if (extra !== null) {
+                        var el2 = document.createElement('div');
+                        el2.className = 'metric extra';
+                        var pre = document.createElement('pre');
+                        try {
+                            pre.textContent = typeof extra === 'string'
+                                ? extra
+                                : JSON.stringify(extra, null, 2);
+                        } catch (e) {
+                            pre.textContent = String(extra);
+                        }
+                        el2.appendChild(pre);
+                        liveGrid.appendChild(el2);
+                    }
+                }
+
+                aside.classList.toggle('hidden', !showFilm && !showLive && !evtButtons.length);
+            }
+
+            /* ================= commands ================= */
+            function cmd(action, index) {
+                var m = { t: 'cmd', action: action };
+                if (typeof index === 'number') m.index = index;
+                send(m);
+            }
+
+            document.getElementById('btnPrev').addEventListener('click', function () {
+                if (previewMode) {
+                    var target = state.index - 1;
+                    if (target >= 0) showPreview(target);
+                } else {
+                    cmd('prev');
+                }
+            });
+            document.getElementById('btnNext').addEventListener('click', function () {
+                if (previewMode) {
+                    var target = state.index + 1;
+                    if (target < deck.length) showPreview(target);
+                } else {
+                    cmd('next');
+                }
+            });
+            document.getElementById('btnPlay').addEventListener('click', function () {
+                cmd(state.presenting ? 'stop' : 'play');
+            });
+            document.getElementById('btnJump').addEventListener('click', doJump);
+            jumpInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') doJump();
+            });
+            document.getElementById('btnFullscreen').addEventListener('click', toggleFullscreen);
+            document.getElementById('btnPreviewMode').addEventListener('click', togglePreviewMode);
+            document.getElementById('btnPreviewCancel').addEventListener('click', hidePreview);
+            document.getElementById('btnPreviewConfirm').addEventListener('click', confirmPreview);
+            // Data input handlers
+            dataKind.addEventListener('change', function () {
+                var kind = dataKind.value;
+                metricFields.style.display = kind === 'metric' ? 'flex' : 'none';
+                textFields.style.display = kind === 'text' ? 'flex' : 'none';
+                customFields.style.display = kind === 'custom' ? 'block' : 'none';
+            });
+            document.getElementById('btnSendData').addEventListener('click', sendDataToSlide);
+
+            function doJump() {
+                var n = parseInt(jumpInput.value, 10);
+                if (!isNaN(n) && n >= 1) cmd('goto', n - 1);
+                jumpInput.value = '';
+            }
+
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(function () { });
+                    fsIcon.className = 'fas fa-compress';
+                } else {
+                    document.exitFullscreen();
+                    fsIcon.className = 'fas fa-expand';
+                }
+            }
+
+            document.addEventListener('fullscreenchange', function () {
+                fsIcon.className = document.fullscreenElement ? 'fas fa-compress' : 'fas fa-expand';
+            });
+
+            // Preview Mode Functions
+            function togglePreviewMode() {
+                previewMode = !previewMode;
+                previewModeIndicator.style.display = previewMode ? 'inline-flex' : 'none';
+                document.getElementById('btnPreviewMode').classList.toggle('active', previewMode);
+                if (!previewMode) hidePreview();
+            }
+
+            function showPreview(targetIdx) {
+                if (!previewMode) return;
+                if (targetIdx < 0 || targetIdx >= deck.length) return;
+                previewTargetIndex = targetIdx;
+                previewSlideNum.textContent = targetIdx + 1;
+                previewTotalSlides.textContent = deck.length;
+                previewBadge.classList.add('active');
+                previewControls.classList.add('active');
+                // Render the preview slide in the background
+                var s = deck[targetIdx];
+                var f = makeFrame(stage, s.html, false);
+                if (f) {
+                    fitFrame(f, s.w, s.h);
+                    f._w = s.w;
+                    f._h = s.h;
+                    f.style.zIndex = '5'; // behind badge
+                }
+            }
+
+            function hidePreview() {
+                previewBadge.classList.remove('active');
+                previewControls.classList.remove('active');
+                // Remove preview iframe
+                var previewFrames = stage.querySelectorAll('.slide-frame[style*="z-index: 5"]');
+                for (var i = 0; i < previewFrames.length; i++) {
+                    previewFrames[i].remove();
+                }
+                previewTargetIndex = -1;
+            }
+
+            function confirmPreview() {
+                if (previewTargetIndex >= 0) {
+                    cmd('goto', previewTargetIndex);
+                }
+                hidePreview();
+            }
+
+            function sendDataToSlide() {
+                if (previewTargetIndex < 0) return;
+                var kind = dataKind.value;
+                var data = null;
+                if (kind === 'metric') {
+                    var label = metricLabel.value.trim();
+                    var value = parseFloat(metricValue.value);
+                    var unit = metricUnit.value.trim();
+                    if (!label || isNaN(value)) return;
+                    data = { kind: 'metric', label: label, value: value, unit: unit };
+                } else if (kind === 'text') {
+                    var label = textLabel.value.trim();
+                    var value = textValue.value.trim();
+                    if (!label || !value) return;
+                    data = { kind: 'text', label: label, text: value };
+                } else if (kind === 'custom') {
+                    try {
+                        data = JSON.parse(customJson.value);
+                    } catch (e) {
+                        alert('Invalid JSON');
+                        return;
+                    }
+                }
+                if (data) {
+                    send({ t: 'slide_data', data: data, targetIndex: previewTargetIndex });
+                }
+            }
+
+            /* ================= rescale ================= */
+            function refit() {
+                var f = stage.querySelector('.slide-frame');
+                if (f && f._w) fitFrame(f, f._w, f._h);
+                var minis = film.querySelectorAll('.mini .slide-frame');
+                for (var i = 0; i < minis.length; i++) {
+                    if (minis[i]._w) fitMini(minis[i], minis[i]._box, minis[i]._w, minis[i]._h);
+                }
+                // crossing the phone/tablet breakpoint rebuilds the layout
+                updateAside();
+                renderFilm(true);
+            }
+
+            var resizeTimer = null;
+            window.addEventListener('resize', function () {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(refit, 120);
+            });
+            window.addEventListener('orientationchange', function () {
+                setTimeout(refit, 300);
+            });
+
+            /* ================= boot ================= */
+            renderHeader();
+            updateAside();
+
+            function extractPairCode(text) {
+                try { var u = new URL(text); var pc = u.searchParams.get('pair_code'); if (pc) return pc; } catch (e) { }
+                return (text || '').trim();
+            }
+            function redirectWithCode(code) {
+                if (!code) return;
+                try {
+                    var u = new URL(location.href);
+                    u.searchParams.set('pair_code', code);
+                    location.href = u.toString();
+                } catch (e) { location.href = location.pathname + '?pair_code=' + encodeURIComponent(code); }
+            }
+
+            var gate = document.getElementById('pairGate');
+            if (!getPairCode()) {
+                if (gate) gate.style.display = 'flex';
+                var scanBtn = document.getElementById('scanBtn');
+                var manualBtn = document.getElementById('manualBtn');
+                var manualInput = document.getElementById('manualCode');
+                var gateStatus = document.getElementById('pairGateStatus');
+                if (scanBtn) {
+                    scanBtn.addEventListener('click', function () {
+                        if (!window.Html5Qrcode) { if (gateStatus) gateStatus.textContent = 'Scanner not available'; return; }
+                        var html5Qr = new Html5Qrcode('qrReader');
+                        html5Qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, function (decodedText) {
+                            html5Qr.stop().catch(function () { });
+                            redirectWithCode(extractPairCode(decodedText));
+                        }, function () { }).catch(function (err) {
+                            if (gateStatus) gateStatus.textContent = 'Camera error: ' + (err && err.message ? err.message : err);
+                        });
+                    });
+                }
+                if (manualBtn) {
+                    manualBtn.addEventListener('click', function () {
+                        var v = (manualInput.value || '').trim();
+                        if (!v) return;
+                        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
+                            redirectWithCode(v); return;
+                        }
+                        fetch('https://api.akcore.dev/Html-Presentation-Api/pair/resolve', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ code: v })
+                        }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                        .then(function (d) { if (d && d.pair_code) redirectWithCode(d.pair_code); else if (gateStatus) gateStatus.textContent = 'Invalid code'; })
+                        .catch(function (err) { if (gateStatus) gateStatus.textContent = 'Cannot resolve code: ' + (err && err.message ? err.message : err); });
+                    });
+                }
+            } else {
+                connect();
+            }
+        })();
+    </script>
+</body>
+
+</html>

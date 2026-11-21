@@ -925,6 +925,11 @@
             /* ================= state ================= */
             var ws = null;
             var retry = 0;
+            var retryTimer = null;
+            var heartbeatTimer = null;
+            var lastInbound = 0;
+            var pairExpired = false;
+            var hiddenAt = 0;
             var deck = [];            // [{html, t, w, h}]
             var deckVersion = 0;
             var state = { index: -1, total: 0, presenting: false };
@@ -1008,44 +1013,100 @@
                 statusText.textContent = text;
             }
 
-            function connect() {
-                setStatus('wait', 'connecting…');
-                try {
-                    console.log('[controller] ws url', wsUrl());
-                ws = new WebSocket(wsUrl());
-                } catch (e) {
-                    scheduleRetry();
-                    return;
-                }
+            function startHeartbeat() {
+                stopHeartbeat();
+                lastInbound = Date.now();
+                heartbeatTimer = setInterval(function () {
+                    if (!ws || ws.readyState !== 1) return;
+                    send({ t: 'ping', ts: Date.now() });
+                    if (Date.now() - lastInbound > 75000) {
+                        try { ws.close(); } catch (e) { }
+                    }
+                }, 20000);
+            }
 
-                ws.onopen = function () {
-                    console.log('[controller] open');
+            function stopHeartbeat() {
+                if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+            }
+
+            function connect() {
+                if (pairExpired || ws) return;
+                if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+                setStatus('wait', 'connecting…');
+                var sock;
+                try { sock = new WebSocket(wsUrl()); }
+                catch (e) { scheduleRetry(); return; }
+                ws = sock;
+
+                sock.onopen = function () {
+                    if (ws !== sock) { try { sock.close(); } catch (e) { } return; }
                     retry = 0;
                     setStatus('on', 'connected');
                     send({ t: 'role', role: 'controller' });
                     send({ t: 'resync' });
+                    startHeartbeat();
                 };
 
-                ws.onmessage = function (e) {
-                    console.log('[controller] msg', e.data.slice(0,120));
+                sock.onmessage = function (e) {
+                    if (ws !== sock) return;
+                    lastInbound = Date.now();
                     var m;
                     try { m = JSON.parse(e.data); } catch (err) { return; }
                     if (m && m.t) handle(m);
                 };
 
-                ws.onclose = function () {
+                sock.onclose = function (e) {
+                    if (ws !== sock) return;
                     ws = null;
+                    stopHeartbeat();
+                    var code = e && e.code;
+                    if (pairExpired || code === 4004) {
+                        pairExpired = true;
+                        setStatus('', 'pair expired');
+                        showPairGate('Pair expired — scan the new QR code shown on the computer.');
+                        return;
+                    }
                     setStatus('', 'offline');
                     scheduleRetry();
                 };
 
-                ws.onerror = function () { try { ws && ws.close(); } catch (e) { } };
+                sock.onerror = function () { try { sock.close(); } catch (e) { } };
             }
 
             function scheduleRetry() {
+                if (pairExpired || retryTimer) return;
                 var delay = Math.min(500 * Math.pow(2, retry++), 5000);
-                setTimeout(function () { if (!ws) connect(); }, delay);
+                retryTimer = setTimeout(function () {
+                    retryTimer = null;
+                    connect();
+                }, delay);
             }
+
+            function forceReconnect() {
+                if (pairExpired || !getPairCode()) return;
+                if (ws) {
+                    var old = ws;
+                    ws = null;
+                    try { old.onopen = old.onmessage = old.onclose = old.onerror = null; old.close(); } catch (e) { }
+                }
+                stopHeartbeat();
+                retry = 0;
+                if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+                connect();
+            }
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+                if (pairExpired) return;
+                var slept = hiddenAt && (Date.now() - hiddenAt > 5000);
+                hiddenAt = 0;
+                if (slept || !ws) forceReconnect();
+            });
+
+            window.addEventListener('online', function () {
+                if (pairExpired) return;
+                forceReconnect();
+            });
 
             /* ================= incoming ================= */
             function handle(m) {
@@ -1077,10 +1138,35 @@
                         banner.classList.toggle('show', !editorOnline);
                         break;
 
+                    case 'ping':
+                        send({ t: 'pong', ts: m.ts });
+                        break;
+
+                    case 'pong':
+                        break;
+
                     case 'error':
-                        statusText.textContent = m.error || 'error';
+                        if (m.error && /invalid pair|pair.*(expired|not found|invalid)/i.test(m.error)) {
+                            pairExpired = true;
+                            setStatus('', 'pair expired');
+                            showPairGate('Pair expired — scan the new QR code shown on the computer.');
+                        } else {
+                            statusText.textContent = m.error || 'error';
+                        }
                         break;
                 }
+            }
+
+            var asideTimer = null;
+            var asideLast = 0;
+            function scheduleAside() {
+                if (asideTimer) return;
+                var wait = Math.max(0, 80 - (Date.now() - asideLast));
+                asideTimer = setTimeout(function () {
+                    asideTimer = null;
+                    asideLast = Date.now();
+                    updateAside();
+                }, wait);
             }
 
             function onData(d) {
@@ -1094,25 +1180,39 @@
                     updateAside();
                     return;
                 }
+                var changed = false;
                 if (d.kind === 'metric') {
-                    metrics[String(d.label != null ? d.label : 'value')] = {
-                        label: String(d.label != null ? d.label : 'value'),
-                        value: d.value,
-                        unit: d.unit ? String(d.unit) : ''
-                    };
+                    var ml = String(d.label != null ? d.label : 'value');
+                    var mv = d.value;
+                    var mu = d.unit ? String(d.unit) : '';
+                    var prev = metrics[ml];
+                    if (!prev || prev.value !== mv || prev.unit !== mu) {
+                        metrics[ml] = { label: ml, value: mv, unit: mu };
+                        changed = true;
+                    }
                 } else if (d.kind === 'text') {
-                    texts[String(d.label != null ? d.label : 'status')] = {
-                        label: String(d.label != null ? d.label : 'status'),
-                        text: String(d.text != null ? d.text : '')
-                    };
+                    var tl = String(d.label != null ? d.label : 'status');
+                    var tt = String(d.text != null ? d.text : '');
+                    var pt = texts[tl];
+                    if (!pt || pt.text !== tt) {
+                        texts[tl] = { label: tl, text: tt };
+                        changed = true;
+                    }
                 } else if (d.kind === 'controls') {
-                    evtButtons = Array.isArray(d.buttons)
+                    var btns = Array.isArray(d.buttons)
                         ? d.buttons.filter(function (b) { return b && b.name; })
                         : [];
+                    var bj, pj;
+                    try { bj = JSON.stringify(btns); } catch (e) { bj = ''; }
+                    try { pj = JSON.stringify(evtButtons); } catch (e) { pj = ''; }
+                    if (bj !== pj) { evtButtons = btns; changed = true; }
                 } else {
-                    extra = d;
+                    var ej, pej;
+                    try { ej = JSON.stringify(d); } catch (e) { ej = String(d); }
+                    try { pej = JSON.stringify(extra); } catch (e) { pej = String(extra); }
+                    if (ej !== pej) { extra = d; changed = true; }
                 }
-                updateAside();
+                if (changed) scheduleAside();
             }
 
             /* ================= rendering ================= */
@@ -1530,43 +1630,48 @@ function updateAside() {
             }
 
             var gate = document.getElementById('pairGate');
-            if (!getPairCode()) {
-                if (gate) gate.style.display = 'flex';
-                var scanBtn = document.getElementById('scanBtn');
-                var manualBtn = document.getElementById('manualBtn');
-                var manualInput = document.getElementById('manualCode');
-                var gateStatus = document.getElementById('pairGateStatus');
-                if (scanBtn) {
-                    scanBtn.addEventListener('click', function () {
-                        if (!window.Html5Qrcode) { if (gateStatus) gateStatus.textContent = 'Scanner not available'; return; }
-                        var html5Qr = new Html5Qrcode('qrReader');
-                        html5Qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, function (decodedText) {
-                            html5Qr.stop().catch(function () { });
-                            redirectWithCode(extractPairCode(decodedText));
-                        }, function () { }).catch(function (err) {
-                            if (gateStatus) gateStatus.textContent = 'Camera error: ' + (err && err.message ? err.message : err);
-                        });
-                    });
-                }
-                if (manualBtn) {
-                    manualBtn.addEventListener('click', function () {
-                        var v = (manualInput.value || '').trim();
-                        if (!v) return;
-                        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
-                            redirectWithCode(v); return;
-                        }
-                        fetch('https://api.akcore.dev/Html-Presentation-Api/pair/resolve', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ code: v })
-                        }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-                        .then(function (d) { if (d && d.pair_code) redirectWithCode(d.pair_code); else if (gateStatus) gateStatus.textContent = 'Invalid code'; })
-                        .catch(function (err) { if (gateStatus) gateStatus.textContent = 'Cannot resolve code: ' + (err && err.message ? err.message : err); });
-                    });
-                }
-            } else {
-                connect();
+            var gateStatus = document.getElementById('pairGateStatus');
+            var scanBtn = document.getElementById('scanBtn');
+            var manualBtn = document.getElementById('manualBtn');
+            var manualInput = document.getElementById('manualCode');
+
+            function showPairGate(msg) {
+                if (!gate) return;
+                gate.style.display = 'flex';
+                if (msg && gateStatus) gateStatus.textContent = msg;
             }
+
+            if (scanBtn) {
+                scanBtn.addEventListener('click', function () {
+                    if (!window.Html5Qrcode) { if (gateStatus) gateStatus.textContent = 'Scanner not available'; return; }
+                    var html5Qr = new Html5Qrcode('qrReader');
+                    html5Qr.start({ facingMode: 'environment' }, { fps: 10, qrbox: 220 }, function (decodedText) {
+                        html5Qr.stop().catch(function () { });
+                        redirectWithCode(extractPairCode(decodedText));
+                    }, function () { }).catch(function (err) {
+                        if (gateStatus) gateStatus.textContent = 'Camera error: ' + (err && err.message ? err.message : err);
+                    });
+                });
+            }
+            if (manualBtn) {
+                manualBtn.addEventListener('click', function () {
+                    var v = (manualInput.value || '').trim();
+                    if (!v) return;
+                    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) {
+                        redirectWithCode(v); return;
+                    }
+                    fetch('https://api.akcore.dev/Html-Presentation-Api/pair/resolve', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: v })
+                    }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    .then(function (d) { if (d && d.pair_code) redirectWithCode(d.pair_code); else if (gateStatus) gateStatus.textContent = 'Invalid code'; })
+                    .catch(function (err) { if (gateStatus) gateStatus.textContent = 'Cannot resolve code: ' + (err && err.message ? err.message : err); });
+                });
+            }
+
+            if (!getPairCode()) showPairGate();
+            else connect();
         })();
     </script>
 </body>

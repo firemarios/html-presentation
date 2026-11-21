@@ -3008,6 +3008,11 @@
             var lastState = null;
             var syncTimer = null;
             var pending = {};
+            var retryTimer = null;
+            var keepAliveTimer = null;
+            var dataQueue = [];
+            var dataTimer = null;
+            var lanHiddenAt = 0;
 
             var chip = document.getElementById('lanChip');
             var chipText = document.getElementById('lanChipText');
@@ -3022,6 +3027,34 @@
             function send(obj) {
                 if (ws && ws.readyState === 1) {
                     try { ws.send(JSON.stringify(obj)); } catch (e) { }
+                }
+            }
+
+            function flushData() {
+                if (dataTimer) { clearTimeout(dataTimer); dataTimer = null; }
+                if (!dataQueue.length) return;
+                var q = dataQueue;
+                dataQueue = [];
+                for (var i = 0; i < q.length; i++) send({ t: 'data', data: q[i] });
+            }
+
+            function queueData(payload) {
+                if (payload && payload.kind === 'clear') {
+                    flushData();
+                    send({ t: 'data', data: payload });
+                    return;
+                }
+                var key = (payload && payload.kind ? payload.kind : '') + '|' +
+                    (payload && payload.label != null ? payload.label : '');
+                var found = false;
+                for (var i = 0; i < dataQueue.length; i++) {
+                    var k = (dataQueue[i] && dataQueue[i].kind ? dataQueue[i].kind : '') + '|' +
+                        (dataQueue[i] && dataQueue[i].label != null ? dataQueue[i].label : '');
+                    if (k === key) { dataQueue[i] = payload; found = true; break; }
+                }
+                if (!found) dataQueue.push(payload);
+                if (!dataTimer) {
+                    dataTimer = setTimeout(function () { dataTimer = null; flushData(); }, 50);
                 }
             }
 
@@ -3067,7 +3100,7 @@
             // forwarded immediately so timers stay smooth on the phone.
             window.__lanSync = function (kind, payload) {
                 if (replaced) return;
-                if (kind === 'data') { send({ t: 'data', data: payload }); return; }
+                if (kind === 'data') { queueData(payload); return; }
                 pending[kind] = true;
                 if (syncTimer) return;
                 syncTimer = setTimeout(function () {
@@ -3085,13 +3118,30 @@
                 return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
             }
 
-            function connect() {
-                if (replaced) return;
-                setChip('connecting', 'LAN…');
-                try { ws = new WebSocket(wsUrl()); }
-                catch (e) { scheduleRetry(); return; }
+            function startKeepAlive() {
+                stopKeepAlive();
+                keepAliveTimer = setInterval(function () {
+                    if (!ws || ws.readyState !== 1) return;
+                    pushState(true);
+                    send({ t: 'ping', ts: Date.now() });
+                }, 25000);
+            }
 
-                ws.onopen = function () {
+            function stopKeepAlive() {
+                if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+            }
+
+            function connect() {
+                if (replaced || ws) return;
+                if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+                setChip('connecting', 'LAN…');
+                var sock;
+                try { sock = new WebSocket(wsUrl()); }
+                catch (e) { scheduleRetry(); return; }
+                ws = sock;
+
+                sock.onopen = function () {
+                    if (ws !== sock) { try { sock.close(); } catch (e) { } return; }
                     retry = 0;
                     attempts = 0;
                     setChip('online', 'Controller on');
@@ -3099,9 +3149,11 @@
                     send({ t: 'data', data: { kind: 'clear' } });  // drop stale values
                     pushDeck(true);
                     pushState(true);
+                    startKeepAlive();
                 };
 
-                ws.onmessage = function (e) {
+                sock.onmessage = function (e) {
+                    if (ws !== sock) return;
                     var m;
                     try { m = JSON.parse(e.data); } catch (err) { return; }
                     if (!m || !m.t) return;
@@ -3111,38 +3163,72 @@
                         editor.fireSlideEvent(m.name, m.payload);
                     } else if (m.t === 'slide_data') {
                         editor.receiveSlideData(m.data);
+                    } else if (m.t === 'ping') {
+                        send({ t: 'pong', ts: m.ts });
                     } else if (m.t === 'editor_replaced') {
                         // Another editor tab took over — stand down for good.
                         replaced = true;
                         setChip('offline', 'other tab');
-                        try { ws && ws.close(); } catch (err) { }
+                        try { sock.close(); } catch (err) { }
                         editor.notify('Opened in another tab — controller released');
                     } else if (m.t === 'error') {
                         console.warn('[LAN] ' + m.error);
                     }
                 };
 
-                ws.onclose = function () {
+                sock.onclose = function () {
+                    if (ws !== sock) return;
                     ws = null;
+                    stopKeepAlive();
                     if (replaced) return;
                     scheduleRetry();
                 };
 
-                ws.onerror = function () { try { ws && ws.close(); } catch (e) { } };
+                sock.onerror = function () { try { sock.close(); } catch (e) { } };
             }
 
             function scheduleRetry() {
-                if (replaced) return;
+                if (replaced || retryTimer) return;
                 attempts++;
+                var delay;
                 if (attempts > 8) {
                     setChip('offline', 'no server');
-                    setTimeout(connect, 10000);   // keep trying, just stop shouting
+                    delay = 10000;   // keep trying, just stop shouting
                 } else {
                     setChip('connecting', 'LAN…');
-                    var delay = Math.min(500 * Math.pow(2, retry++), 5000);
-                    setTimeout(connect, delay);
+                    delay = Math.min(500 * Math.pow(2, retry++), 5000);
                 }
+                retryTimer = setTimeout(function () {
+                    retryTimer = null;
+                    connect();
+                }, delay);
             }
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') { lanHiddenAt = Date.now(); return; }
+                if (replaced) return;
+                var slept = lanHiddenAt && (Date.now() - lanHiddenAt > 5000);
+                lanHiddenAt = 0;
+                if (!slept && ws) return;
+                if (ws) {
+                    var old = ws;
+                    ws = null;
+                    try { old.onopen = old.onmessage = old.onclose = old.onerror = null; old.close(); } catch (e) { }
+                }
+                stopKeepAlive();
+                attempts = 0;
+                retry = 0;
+                if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+                connect();
+            });
+
+            window.addEventListener('online', function () {
+                if (replaced || ws) return;
+                attempts = 0;
+                retry = 0;
+                if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+                connect();
+            });
 
             // Click the chip to copy the controller URL.
             if (chip) {
@@ -4141,10 +4227,46 @@
             var cloudLastState = null;
             var cloudSyncTimer = null;
             var cloudPending = {};
+            var cloudRetry = 0;
+            var cloudRetryTimer = null;
+            var cloudHeartbeatTimer = null;
+            var cloudKeepAliveTimer = null;
+            var cloudPairInvalid = false;
+            var cloudHiddenAt = 0;
+            var cloudDataQueue = [];
+            var cloudDataTimer = null;
 
             function cloudSend(obj) {
                 if (cloudWs && cloudWs.readyState === 1) {
                     try { cloudWs.send(JSON.stringify(obj)); } catch (e) { }
+                }
+            }
+
+            function flushCloudData() {
+                if (cloudDataTimer) { clearTimeout(cloudDataTimer); cloudDataTimer = null; }
+                if (!cloudDataQueue.length) return;
+                var q = cloudDataQueue;
+                cloudDataQueue = [];
+                for (var i = 0; i < q.length; i++) cloudSend({ t: 'data', data: q[i] });
+            }
+
+            function queueCloudData(payload) {
+                if (payload && payload.kind === 'clear') {
+                    flushCloudData();
+                    cloudSend({ t: 'data', data: payload });
+                    return;
+                }
+                var key = (payload && payload.kind ? payload.kind : '') + '|' +
+                    (payload && payload.label != null ? payload.label : '');
+                var found = false;
+                for (var i = 0; i < cloudDataQueue.length; i++) {
+                    var k = (cloudDataQueue[i] && cloudDataQueue[i].kind ? cloudDataQueue[i].kind : '') + '|' +
+                        (cloudDataQueue[i] && cloudDataQueue[i].label != null ? cloudDataQueue[i].label : '');
+                    if (k === key) { cloudDataQueue[i] = payload; found = true; break; }
+                }
+                if (!found) cloudDataQueue.push(payload);
+                if (!cloudDataTimer) {
+                    cloudDataTimer = setTimeout(function () { cloudDataTimer = null; flushCloudData(); }, 50);
                 }
             }
 
@@ -4181,7 +4303,7 @@
 
             window.__cloudSync = function (kind, payload) {
                 if (!cloudWs || cloudPairCode === null) return;
-                if (kind === 'data') { cloudSend({ t: 'data', data: payload }); return; }
+                if (kind === 'data') { queueCloudData(payload); return; }
                 cloudPending[kind] = true;
                 if (cloudSyncTimer) return;
                 cloudSyncTimer = setTimeout(function () {
@@ -4192,48 +4314,177 @@
                 }, 120);
             };
 
+            function closeCloudSocket() {
+                if (!cloudWs) return;
+                var old = cloudWs;
+                cloudWs = null;
+                try {
+                    old.onopen = old.onmessage = old.onclose = old.onerror = null;
+                    old.close();
+                } catch (e) { }
+            }
+
+            function startCloudHeartbeat() {
+                stopCloudHeartbeat();
+                cloudHeartbeatTimer = setInterval(function () {
+                    if (!cloudWs || cloudWs.readyState !== 1) return;
+                    cloudSend({ t: 'ping', ts: Date.now() });
+                    cloudPushState(true);
+                }, 25000);
+            }
+
+            function stopCloudHeartbeat() {
+                if (cloudHeartbeatTimer) { clearInterval(cloudHeartbeatTimer); cloudHeartbeatTimer = null; }
+            }
+
+            function cloudRefreshPair() {
+                var code = cloudPairCode;
+                if (!code || !authToken) return;
+                pairUI.refreshShortCode(code).then(function (d) {
+                    if (!d) return;
+                    if (d.short_code) currentShortCode = d.short_code;
+                    if (d.pair_code && d.pair_code !== cloudPairCode) {
+                        currentPairCode = d.pair_code;
+                        cloudConnect(d.pair_code);
+                        var ov = document.getElementById('pairOverlay');
+                        if (ov && ov.classList.contains('open')) {
+                            pairUI.show(d.pair_code, currentShortCode, d.expires_in || 120);
+                        }
+                    } else if (d.short_code) {
+                        var ov2 = document.getElementById('pairOverlay');
+                        if (ov2 && ov2.classList.contains('open')) {
+                            pairUI.show(cloudPairCode, currentShortCode, d.expires_in || 120);
+                        }
+                    }
+                }).catch(function (err) {
+                    var msg = err && err.message ? String(err.message) : '';
+                    if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
+                        stopCloudKeepAlive();
+                        if (editor.notify) editor.notify('Session expired — log in again to keep the controller alive');
+                        return;
+                    }
+                    if (msg.indexOf('404') !== -1) {
+                        stopCloudKeepAlive();
+                        if (editor.notify) editor.notify('Controller pair expired — creating a new code…');
+                        setTimeout(function () {
+                            if (authToken) pairUI.recreate();
+                        }, 600);
+                    }
+                });
+            }
+
+            function startCloudKeepAlive() {
+                stopCloudKeepAlive();
+                cloudKeepAliveTimer = setInterval(cloudRefreshPair, 60000);
+            }
+
+            function stopCloudKeepAlive() {
+                if (cloudKeepAliveTimer) { clearInterval(cloudKeepAliveTimer); cloudKeepAliveTimer = null; }
+            }
+
+            function scheduleCloudRetry() {
+                if (cloudRetryTimer || !cloudPairCode) return;
+                var delay = Math.min(1000 * Math.pow(2, cloudRetry++), 15000);
+                cloudRetryTimer = setTimeout(function () {
+                    cloudRetryTimer = null;
+                    if (cloudPairCode && (!cloudWs || cloudWs.readyState > 1)) cloudConnect(cloudPairCode);
+                }, delay);
+            }
+
             function cloudConnect(code) {
                 cloudPairCode = code;
+                cloudPairInvalid = false;
                 cloudLastDeck = null;
                 cloudLastState = null;
-                try { if (cloudWs) { cloudWs.onclose = null; cloudWs.close(); } } catch (e) { }
+                if (cloudRetryTimer) { clearTimeout(cloudRetryTimer); cloudRetryTimer = null; }
+                stopCloudHeartbeat();
+                closeCloudSocket();
+
                 var url = (CLOUD_API.indexOf('https') === 0 ? 'wss://' : 'ws://') + CLOUD_API.replace(/^https?:\/\//, '') + '/ws?pair_code=' + encodeURIComponent(code) + '&role=editor&token=' + encodeURIComponent(authToken);
-                console.log('[cloud] connecting', url);
-                cloudWs = new WebSocket(url);
-                cloudWs.onopen = function () {
-                    console.log('[cloud] open');
+                var sock;
+                try { sock = new WebSocket(url); }
+                catch (e) { scheduleCloudRetry(); return; }
+                cloudWs = sock;
+
+                sock.onopen = function () {
+                    if (cloudWs !== sock) { try { sock.close(); } catch (e) { } return; }
+                    cloudRetry = 0;
                     cloudSend({ t: 'role', role: 'editor' });
                     cloudSend({ t: 'data', data: { kind: 'clear' } });
-                    console.log('[cloud] push deck', editor.slides.length, 'state', editor.currentIndex);
                     cloudPushDeck(true);
                     cloudPushState(true);
+                    startCloudHeartbeat();
+                    startCloudKeepAlive();
                 };
-                cloudWs.onmessage = function (e) {
-                    console.log('[cloud] recv', (e.data||'').slice(0,120));
-                    var m; try { m = JSON.parse(e.data); } catch (err) { return; }
+
+                sock.onmessage = function (e) {
+                    if (cloudWs !== sock) return;
+                    var m;
+                    try { m = JSON.parse(e.data); } catch (err) { return; }
                     if (!m || !m.t) return;
                     if (m.t === 'resync') { cloudPushDeck(true); cloudPushState(true); }
                     else if (m.t === 'cmd') editor.remoteCmd(m.action, m.index);
                     else if (m.t === 'evt') editor.fireSlideEvent(m.name, m.payload);
                     else if (m.t === 'slide_data') editor.receiveSlideData(m.data);
-                    else if (m.t === 'error' && editor.notify) editor.notify(m.error || 'Controller error');
+                    else if (m.t === 'ping') cloudSend({ t: 'pong', ts: m.ts });
+                    else if (m.t === 'error') {
+                        if (m.error && /invalid pair|pair.*(expired|not found|invalid)/i.test(m.error)) cloudPairInvalid = true;
+                        if (editor.notify && m.error) editor.notify(m.error);
+                    }
                 };
-                cloudWs.onclose = function (e) { console.log('[cloud] close', e && e.code, e && e.reason); cloudWs = null; };
-                cloudWs.onerror = function () { try { cloudWs && cloudWs.close(); } catch (e) { } };
+
+                sock.onclose = function (e) {
+                    if (cloudWs !== sock) return;
+                    cloudWs = null;
+                    stopCloudHeartbeat();
+                    var c = e && e.code;
+                    if (c === 4004 || cloudPairInvalid) {
+                        cloudPairInvalid = false;
+                        cloudPairCode = null;
+                        stopCloudKeepAlive();
+                        if (editor.notify) editor.notify('Controller pair expired — creating a new code…');
+                        setTimeout(function () {
+                            if (authToken) pairUI.recreate();
+                        }, 600);
+                        return;
+                    }
+                    scheduleCloudRetry();
+                };
+
+                sock.onerror = function () { try { sock.close(); } catch (e) { } };
+            }
+
+            function cloudForceReconnect() {
+                if (!cloudPairCode) return;
+                closeCloudSocket();
+                cloudRetry = 0;
+                if (cloudRetryTimer) { clearTimeout(cloudRetryTimer); cloudRetryTimer = null; }
+                cloudConnect(cloudPairCode);
             }
 
             var currentPairCode = null;
             var currentShortCode = null;
             var pairCountdownTimer = null;
             var pairUI = {
-                connect: function () {
+                connect: function (forceNew) {
                     if (!authUI.user || !authToken) { authUI.openLogin(); return; }
-                    if (currentPairCode) {
+                    if (currentPairCode && !forceNew) {
                         var self = this;
                         this.refreshShortCode(currentPairCode).then(function (d) {
+                            if (d && d.pair_code && d.pair_code !== currentPairCode) {
+                                currentPairCode = d.pair_code;
+                                cloudConnect(currentPairCode);
+                            }
                             self.show(currentPairCode, currentShortCode, (d && d.expires_in) || 120);
-                        }).catch(function () {
-                            self.show(currentPairCode, currentShortCode, 120);
+                        }).catch(function (err) {
+                            var msg = err && err.message ? String(err.message) : '';
+                            if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
+                                if (editor.notify) editor.notify('Session expired — log in again');
+                                authUI.openLogin();
+                                return;
+                            }
+                            if (msg.indexOf('404') !== -1) self.recreate();
+                            else self.show(currentPairCode, currentShortCode, 120);
                         });
                         return;
                     }
@@ -4249,8 +4500,37 @@
                         cloudConnect(currentPairCode);
                         pairUI.show(currentPairCode, currentShortCode, data.expires_in || 120);
                     }).catch(function (err) {
-                        if (editor.notify) editor.notify('Cannot create pair code: ' + (err && err.message ? err.message : err));
+                        var msg = err && err.message ? String(err.message) : '';
+                        if (msg.indexOf('401') !== -1 || msg.indexOf('403') !== -1) {
+                            if (editor.notify) editor.notify('Session expired — log in again');
+                            authUI.openLogin();
+                            return;
+                        }
+                        if (editor.notify) editor.notify('Cannot create pair code: ' + msg);
                     });
+                },
+                recreate: function () {
+                    if (!authUI.user || !authToken) { authUI.openLogin(); return; }
+                    var now = Date.now();
+                    if (this._lastRecreate && now - this._lastRecreate < 3000) return;
+                    this._lastRecreate = now;
+                    var old = currentPairCode;
+                    currentPairCode = null;
+                    currentShortCode = null;
+                    cloudPairCode = null;
+                    stopCloudHeartbeat();
+                    stopCloudKeepAlive();
+                    closeCloudSocket();
+                    if (old) {
+                        try {
+                            fetch(CLOUD_API + '/pair/' + encodeURIComponent(old), {
+                                method: 'DELETE',
+                                headers: { 'Authorization': 'Bearer ' + authToken },
+                                keepalive: true
+                            });
+                        } catch (e) { }
+                    }
+                    this.connect(true);
                 },
                 show: function (code, shortCode, expiresIn) {
                     var url = CLOUD_CONTROLLER_URL + '?pair_code=' + encodeURIComponent(code);
@@ -4292,15 +4572,15 @@
                 },
                 refreshShortCode: function (code) {
                     var endpoints = [
-                        '/pair/' + encodeURIComponent(code) + '/short_code',
                         '/pair/' + encodeURIComponent(code) + '/refresh',
+                        '/pair/' + encodeURIComponent(code) + '/short_code',
                         '/pair/refresh'
                     ];
                     var body = JSON.stringify({ pair_code: code });
+                    var lastErr = null;
                     var tryNext = function (i) {
                         if (i >= endpoints.length) {
-                            console.error('[pair] no refresh endpoint succeeded');
-                            throw new Error('no refresh endpoint');
+                            throw lastErr || new Error('no refresh endpoint');
                         }
                         return fetch(CLOUD_API + endpoints[i], {
                             method: 'POST',
@@ -4308,9 +4588,12 @@
                             body: (endpoints[i].indexOf('/pair/refresh') !== -1) ? body : '{}'
                         }).then(function (res) {
                             if (!res.ok) throw new Error('HTTP ' + res.status + ' @ ' + endpoints[i]);
-                            return res.json();
+                            return res.text().then(function (txt) {
+                                if (!txt) return {};
+                                try { return JSON.parse(txt); } catch (e) { return {}; }
+                            });
                         }).catch(function (err) {
-                            console.warn('[pair] refresh failed:', err && err.message);
+                            if (!lastErr || /40[13]/.test(err && err.message)) lastErr = err;
                             return tryNext(i + 1);
                         });
                     };
@@ -4324,6 +4607,19 @@
                 }
             };
             window.pairUI = pairUI;
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'hidden') { cloudHiddenAt = Date.now(); return; }
+                if (!cloudPairCode) return;
+                var slept = cloudHiddenAt && (Date.now() - cloudHiddenAt > 5000);
+                cloudHiddenAt = 0;
+                if (slept || !cloudWs || cloudWs.readyState > 1) cloudForceReconnect();
+            });
+
+            window.addEventListener('online', function () {
+                if (!cloudPairCode) return;
+                cloudForceReconnect();
+            });
 
             window.addEventListener('beforeunload', function () {
                 if (!currentPairCode) return;
@@ -4434,8 +4730,6 @@
                     });
                 }
             }
-
-        })();
 
         })();
 
